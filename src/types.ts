@@ -106,8 +106,18 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
     extraData?: any;
 
     /**
+     * Optional dataset identity for snapshot reuse.
+     * Treat this as an opt-in snapshot key for a logical dataset, not as a render key.
+     * When the same filter can be refetched, resorted, or mutated in place, include or
+     * vary this with `dataVersion` so the cached snapshot identity stays correct.
+     */
+    dataCacheKey?: Key;
+
+    /**
      * Version token that forces the list to treat data as updated even when the array reference is stable.
      * Increment or change this when mutating the data array in place.
+     * When the same filter can be refetched, resorted, or mutated, include or vary this
+     * together with `dataCacheKey` so the dataset snapshot identity remains correct.
      */
     dataVersion?: Key;
 
@@ -330,6 +340,13 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
 
     getFixedItemSize?: (index: number, item: ItemT, type: TItemType) => number | undefined;
 
+    /**
+     * Optional exact-size family key for layout reuse.
+     * Return the same string only when the item belongs to the same exact measurement family.
+     * This is separate from `getItemType` and must not be used for approximate sizing.
+     */
+    getLayoutKey?: (item: ItemT, index: number) => string | undefined;
+
     itemsAreEqual?: (itemPrevious: ItemT, item: ItemT, index: number, data: readonly ItemT[]) => boolean;
 }
 
@@ -374,11 +391,26 @@ export interface ColumnWrapperStyle {
 
 export type LegendListProps<ItemT = any> = LegendListPropsBase<ItemT, ComponentProps<typeof ScrollView>>;
 
+export interface DatasetSnapshot {
+    columns: Map<string, number>;
+    idCache: string[];
+    indexByKey: Map<string, number>;
+    positions: Map<string, number>;
+    sizes: Map<string, number>;
+    sizesKnown: Map<string, number>;
+    totalSize: number;
+    geometryCacheKey: string;
+    dataVersion: Key | undefined;
+    dataLength: number;
+}
+
 export interface InternalState {
     positions: Map<string, number>;
     columns: Map<string, number>;
     sizes: Map<string, number>;
     sizesKnown: Map<string, number>;
+    layoutSizeCache: Map<string, number>;
+    datasetSnapshots: Map<string, DatasetSnapshot>;
     containerItemKeys: Set<string>;
     containerItemTypes: Map<number, string>;
     isStartReached: boolean;
@@ -408,6 +440,8 @@ export interface InternalState {
     nativeMarginTop: number;
     indexByKey: Map<string, number>;
     idCache: string[];
+    geometryCacheKey?: string;
+    pendingDataSnapshotRestore?: string;
     viewabilityConfigCallbackPairs: ViewabilityConfigCallbackPairs<any> | undefined;
     scrollHistory: Array<{ scroll: number; time: number }>;
     lastScrollAdjustForHistory?: number;
@@ -452,11 +486,13 @@ export interface InternalState {
     props: {
         alignItemsAtEnd: boolean;
         data: readonly any[];
+        dataCacheKey: Key | undefined;
         dataVersion: Key | undefined;
         estimatedItemSize: number | undefined;
         getEstimatedItemSize: LegendListProps["getEstimatedItemSize"];
         getFixedItemSize: LegendListProps["getFixedItemSize"];
         getItemType: LegendListProps["getItemType"];
+        getLayoutKey: LegendListProps["getLayoutKey"];
         horizontal: boolean;
         keyExtractor: LegendListProps["keyExtractor"];
         maintainScrollAtEnd: boolean | MaintainScrollAtEndOptions;

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import "../setup"; // Import global test setup
 
 import { doInitialAllocateContainers } from "../../src/core/doInitialAllocateContainers";
+import * as calculateItemsInViewModule from "../../src/core/calculateItemsInView";
 import type { StateContext } from "../../src/state/state";
 import type { InternalState } from "../../src/types";
 import { createMockContext } from "../__mocks__/createMockContext";
@@ -288,6 +289,25 @@ describe("doInitialAllocateContainers", () => {
 
             // Note: calculateItemsInView behavior depends on IsNewArchitecture
             // which we cannot easily mock, so we just verify allocation succeeds
+        });
+
+        it("should pass restoredDataSnapshot through the first post-restore calculate call", () => {
+            const calculateItemsInViewSpy = spyOn(calculateItemsInViewModule, "calculateItemsInView").mockImplementation(
+                () => {},
+            );
+            mockState.lastLayout = { height: 600, width: 400, x: 0, y: 0 };
+            mockState.pendingDataSnapshotRestore = "spot|v1|geo-a";
+
+            doInitialAllocateContainers(mockCtx, mockState);
+
+            const call = calculateItemsInViewSpy.mock.calls[0];
+            expect(call[0]).toBe(mockCtx);
+            expect(call[1]).toBe(mockState);
+            expect(call[2]).toEqual({
+                dataChanged: true,
+                doMVCP: true,
+                restoredDataSnapshot: true,
+            });
         });
 
         it("should handle initialScroll = 0 as falsy", () => {

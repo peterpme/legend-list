@@ -10,17 +10,22 @@ export function checkResetContainers(
     ctx: StateContext,
     state: InternalState,
     isFirst: boolean,
-    dataProp: readonly unknown[],
+    didDataChange: boolean,
+    previousData: readonly unknown[] | undefined,
 ) {
     if (state) {
         // Preserve averages for items that are considered equal before updating data
-        if (!isFirst && state.props.data !== dataProp) {
-            updateAveragesOnDataChange(state, state.props.data, dataProp);
+        if (!isFirst && didDataChange && previousData) {
+            updateAveragesOnDataChange(state, previousData, state.props.data);
         }
         const { maintainScrollAtEnd } = state.props;
 
         if (!isFirst) {
-            calculateItemsInView(ctx, state, { dataChanged: true, doMVCP: true });
+            calculateItemsInView(ctx, state, {
+                dataChanged: true,
+                doMVCP: true,
+                restoredDataSnapshot: state.pendingDataSnapshotRestore !== undefined,
+            });
 
             const shouldMaintainScrollAtEnd =
                 maintainScrollAtEnd === true || (maintainScrollAtEnd as MaintainScrollAtEndOptions).onDataChange;
@@ -29,7 +34,7 @@ export function checkResetContainers(
 
             // Reset the endReached flag if new data has been added and we didn't
             // just maintain the scroll at end
-            if (!didMaintainScrollAtEnd && dataProp.length > state.props.data.length) {
+            if (!didMaintainScrollAtEnd && previousData && state.props.data.length > previousData.length) {
                 state.isEndReached = false;
             }
 

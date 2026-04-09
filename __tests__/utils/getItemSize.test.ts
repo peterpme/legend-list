@@ -11,10 +11,12 @@ describe("getItemSize", () => {
     beforeEach(() => {
         mockState = createMockState({
             averageSizes: { "": { avg: 80, num: 1 } },
+            layoutSizeCache: new Map(),
             props: {
                 estimatedItemSize: 50,
                 getEstimatedItemSize: undefined,
             },
+            geometryCacheKey: "geo-a",
             scrollingTo: undefined,
             sizes: new Map(),
             sizesKnown: new Map(),
@@ -102,6 +104,30 @@ describe("getItemSize", () => {
 
             expect(result).toBe(80); // Should use average size
             expect(mockState.sizes.get("item_0")).toBe(80); // Should update cache
+        });
+    });
+
+    describe("exact layout family cache", () => {
+        it("should reuse an exact layout-family size before average and estimated fallbacks", () => {
+            mockState.props.getLayoutKey = (item: any) => item.family;
+            mockState.layoutSizeCache.set("geo-a|spot", 132);
+
+            const result = getItemSize(mockState, "item_0", 0, { family: "spot", id: 0 });
+
+            expect(result).toBe(132);
+            expect(mockState.sizesKnown.get("item_0")).toBe(132);
+            expect(mockState.sizes.get("item_0")).toBe(132);
+        });
+
+        it("should not reuse a layout-family size across geometry changes", () => {
+            mockState.geometryCacheKey = "geo-b";
+            mockState.props.getLayoutKey = (item: any) => item.family;
+            mockState.layoutSizeCache.set("geo-a|spot", 132);
+
+            const result = getItemSize(mockState, "item_0", 0, { family: "spot", id: 0 });
+
+            expect(result).toBe(50);
+            expect(mockState.sizesKnown.get("item_0")).toBeUndefined();
         });
     });
 

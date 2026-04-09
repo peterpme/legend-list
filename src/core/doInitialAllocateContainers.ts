@@ -51,13 +51,22 @@ export function doInitialAllocateContainers(ctx: StateContext, state: InternalSt
         set$(ctx, "numContainersPooled", numContainers * state.props.initialContainerPoolRatio);
 
         if (!IsNewArchitecture || state.lastLayout) {
+            const restoredDataSnapshot = state.pendingDataSnapshotRestore !== undefined;
             if (state.props.initialScroll) {
                 requestAnimationFrame(() => {
                     // immediate render causes issues with initial index position
-                    calculateItemsInView(ctx, state, { dataChanged: true, doMVCP: true });
+                    calculateItemsInView(ctx, state, {
+                        dataChanged: true,
+                        doMVCP: true,
+                        restoredDataSnapshot,
+                    });
                 });
             } else {
-                calculateItemsInView(ctx, state, { dataChanged: true, doMVCP: true });
+                calculateItemsInView(ctx, state, {
+                    dataChanged: true,
+                    doMVCP: true,
+                    restoredDataSnapshot,
+                });
             }
         }
 

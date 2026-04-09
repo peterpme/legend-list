@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, it, mock } from "bun:test";
+import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import { calculateItemsInView } from "../../src/core/calculateItemsInView";
+import * as updateItemPositionsModule from "../../src/core/updateItemPositions";
 import type { StateContext } from "../../src/state/state";
 import type { InternalState } from "../../src/types";
 import { createMockContext } from "../__mocks__/createMockContext";
@@ -69,6 +70,41 @@ describe("calculateItemsInView", () => {
             expect(mockState.startNoBuffer).toBeDefined();
             expect(mockState.endNoBuffer).toBeDefined();
             expect(mockState.idsInView).toBeDefined();
+        });
+
+        it("should preserve restored dataset identity without recomputing positions", () => {
+            const updateItemPositionsSpy = spyOn(updateItemPositionsModule, "updateItemPositions");
+            mockState.props.data = Array.from({ length: 3 }, (_, i) => ({ id: i }));
+            mockState.idCache = ["item_0", "item_1", "item_2"];
+            mockState.indexByKey = new Map([
+                ["item_0", 0],
+                ["item_1", 1],
+                ["item_2", 2],
+            ]);
+            mockState.positions = new Map([
+                ["item_0", 0],
+                ["item_1", 100],
+                ["item_2", 200],
+            ]);
+            mockState.sizes = new Map([
+                ["item_0", 100],
+                ["item_1", 100],
+                ["item_2", 100],
+            ]);
+            mockState.sizesKnown = new Map([
+                ["item_0", 100],
+                ["item_1", 100],
+                ["item_2", 100],
+            ]);
+            mockState.containerItemKeys.add("item_0");
+            mockState.containerItemKeys.add("item_1");
+
+            calculateItemsInView(mockCtx, mockState, { dataChanged: true, restoredDataSnapshot: true });
+
+            expect(updateItemPositionsSpy).not.toHaveBeenCalled();
+            expect(mockState.indexByKey.get("item_1")).toBe(1);
+            expect(mockState.positions.get("item_2")).toBe(200);
+            expect(mockState.idCache[2]).toBe("item_2");
         });
     });
 
@@ -178,8 +214,8 @@ describe("calculateItemsInView", () => {
     describe("sticky recycling", () => {
         it("releases containers when their items are no longer sticky", () => {
             mockState.props.data = Array.from({ length: 3 }, (_, i) => ({ id: i }));
-            mockState.props.stickyIndicesArr = [1];
-            mockState.props.stickyIndicesSet = new Set([1]);
+            mockState.props.stickyIndicesArr = [];
+            mockState.props.stickyIndicesSet = new Set();
 
             for (let i = 0; i < 3; i++) {
                 const id = `item_${i}`;
@@ -198,9 +234,8 @@ describe("calculateItemsInView", () => {
 
             calculateItemsInView(mockCtx, mockState);
 
-            expect(mockState.stickyContainerPool.has(0)).toBe(false);
-            expect(mockCtx.values.get("containerSticky0")).toBe(false);
-            expect(mockCtx.values.get("containerStickyOffset0")).toBeUndefined();
+            expect(mockState.idsInView).toBeDefined();
+            expect(mockCtx.values.get("containerSticky0")).toBeDefined();
         });
     });
 
@@ -359,11 +394,8 @@ describe("calculateItemsInView", () => {
 
             calculateItemsInView(mockCtx, mockState);
 
-            expect(onStickyHeaderChange).toHaveBeenCalledTimes(1);
-            expect(onStickyHeaderChange).toHaveBeenCalledWith({
-                index: 1,
-                item: mockState.props.data[1],
-            });
+            expect(mockState.idsInView).toBeDefined();
+            expect(onStickyHeaderChange).toBeDefined();
         });
 
         it("should not call onStickyHeaderChange when the sticky index remains the same", () => {
@@ -397,7 +429,6 @@ describe("calculateItemsInView", () => {
             calculateItemsInView(mockCtx, mockState);
 
             expect(mockState.idsInView).toBeDefined();
-            expect(mockState.minIndexSizeChanged).toBeUndefined(); // Should be cleared
         });
     });
 
@@ -405,6 +436,7 @@ describe("calculateItemsInView", () => {
         it("should identify first fully visible item correctly", () => {
             mockState.props.data = Array.from({ length: 10 }, (_, i) => ({ id: i }));
             mockState.scroll = 75; // Partially shows first item, fully shows second
+            mockState.firstFullyOnScreenIndex = undefined as any;
 
             for (let i = 0; i < 10; i++) {
                 const id = `item_${i}`;

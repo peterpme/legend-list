@@ -1,4 +1,5 @@
 import type { InternalState } from "@/types";
+import { getResolvedLayoutKey } from "@/utils/getResolvedLayoutKey";
 import { roundSize } from "@/utils/helpers";
 
 export function getItemSize(state: InternalState, key: string, index: number, data: any, useAverageSize?: boolean) {
@@ -9,7 +10,7 @@ export function getItemSize(state: InternalState, key: string, index: number, da
         averageSizes,
         props: { estimatedItemSize, getEstimatedItemSize, getFixedItemSize, getItemType },
     } = state;
-    const sizeKnown = sizesKnown.get(key)!;
+    const sizeKnown = sizesKnown.get(key);
     if (sizeKnown !== undefined) {
         return sizeKnown;
     }
@@ -22,6 +23,18 @@ export function getItemSize(state: InternalState, key: string, index: number, da
         size = getFixedItemSize(index, data, itemType);
         if (size !== undefined) {
             sizesKnown.set(key, size);
+            sizes.set(key, size);
+            return size;
+        }
+    }
+
+    const resolvedLayoutKey = getResolvedLayoutKey(state, data, index);
+    if (resolvedLayoutKey !== undefined) {
+        const layoutSize = state.layoutSizeCache.get(resolvedLayoutKey);
+        if (layoutSize !== undefined && layoutSize > 0) {
+            sizesKnown.set(key, layoutSize);
+            sizes.set(key, layoutSize);
+            return layoutSize;
         }
     }
 

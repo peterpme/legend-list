@@ -55,6 +55,12 @@ class AnimatedValue<T = number> {
     }
 }
 
+// Very light component stubs
+export const View = (() => null) as unknown as AnyFunction;
+export const Text = (() => null) as unknown as AnyFunction;
+export const RefreshControl = ((_props: any) => null) as unknown as AnyFunction;
+export const ScrollView = (() => null) as unknown as AnyFunction;
+
 export const Animated = {
     event(_args: any, config?: { listener?: AnyFunction; useNativeDriver?: boolean }): AnyFunction {
         const listener = config?.listener;
@@ -64,6 +70,8 @@ export const Animated = {
         return { start: (cb?: AnyFunction) => cb?.() };
     },
     Value: AnimatedValue,
+    View,
+    ScrollView,
 };
 
 // Provide a global requestAnimationFrame fallback for tests that expect it
@@ -71,12 +79,6 @@ if (typeof globalThis.requestAnimationFrame !== "function") {
     // @ts-ignore
     globalThis.requestAnimationFrame = (cb: AnyFunction) => setTimeout(cb, 0);
 }
-
-// Very light component stubs
-export const View = (() => null) as unknown as AnyFunction;
-export const Text = (() => null) as unknown as AnyFunction;
-export const RefreshControl = ((_props: any) => null) as unknown as AnyFunction;
-export const ScrollView = (() => null) as unknown as AnyFunction;
 
 export type View = any; // for type-only imports
 export type ScrollView = any; // for type-only imports

@@ -26,6 +26,7 @@ import { DebugView } from "@/components/DebugView";
 import { ListComponent } from "@/components/ListComponent";
 import { ENABLE_DEBUG_VIEW, IsNewArchitecture } from "@/constants";
 import { calculateOffsetForIndex } from "@/core/calculateOffsetForIndex";
+import { buildDatasetSnapshotKey, restoreDatasetSnapshot, saveDatasetSnapshot } from "@/core/dataCache";
 import { checkResetContainers } from "@/core/checkResetContainers";
 import { doInitialAllocateContainers } from "@/core/doInitialAllocateContainers";
 import { finishScrollTo } from "@/core/finishScrollTo";
@@ -52,6 +53,7 @@ import type {
 } from "@/types";
 import { typedForwardRef, typedMemo } from "@/types";
 import { createColumnWrapperStyle } from "@/utils/createColumnWrapperStyle";
+import { buildGeometryCacheKey } from "@/utils/buildGeometryCacheKey";
 import { getId } from "@/utils/getId";
 import { getRenderedItem } from "@/utils/getRenderedItem";
 import { extractPadding, isArray, warnDevOnce } from "@/utils/helpers";
@@ -106,6 +108,7 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
         columnWrapperStyle,
         contentContainerStyle: contentContainerStyleProp,
         data: dataProp = [],
+        dataCacheKey,
         dataVersion,
         drawDistance = 250,
         enableAverages = true,
@@ -115,6 +118,7 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
         getEstimatedItemSize,
         getFixedItemSize,
         getItemType,
+        getLayoutKey,
         horizontal,
         initialContainerPoolRatio = 2,
         initialHeaderSize,
@@ -221,9 +225,13 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
                 lastBatchingAction: Date.now(),
                 lastLayout: undefined,
                 loadStartTime: Date.now(),
+                layoutSizeCache: new Map(),
+                datasetSnapshots: new Map(),
                 minIndexSizeChanged: 0,
                 nativeMarginTop: 0,
                 positions: new Map(),
+                geometryCacheKey: undefined,
+                pendingDataSnapshotRestore: undefined,
                 props: {} as any,
                 queuedCalculateItemsInView: 0,
                 refScroller: undefined as any,
@@ -260,7 +268,31 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
 
     const isFirst = !state.props.renderItem;
 
-    const didDataChange = state.props.dataVersion !== dataVersion || state.props.data !== dataProp;
+    const geometryCacheKey = buildGeometryCacheKey({
+        horizontal: !!horizontal,
+        numColumns: numColumnsProp,
+        columnWrapperStyle: ctx.columnWrapperStyle,
+        otherAxisSize: state.otherAxisSize,
+    });
+    state.geometryCacheKey = geometryCacheKey;
+
+    const previousDatasetMetadataRef = useRef<{
+        data: readonly T[];
+        dataCacheKey: typeof dataCacheKey;
+        dataVersion: typeof dataVersion;
+        geometryCacheKey: string | undefined;
+    }>({
+        data: dataProp,
+        dataCacheKey,
+        dataVersion,
+        geometryCacheKey,
+    });
+    const hasSeenDatasetMetadataRef = useRef(false);
+
+    const didDataChange =
+        previousDatasetMetadataRef.current.data !== dataProp ||
+        previousDatasetMetadataRef.current.dataCacheKey !== dataCacheKey ||
+        previousDatasetMetadataRef.current.dataVersion !== dataVersion;
     if (didDataChange) {
         state.dataChangeNeedsScrollUpdate = true;
     }
@@ -270,12 +302,14 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
     state.props = {
         alignItemsAtEnd,
         data: dataProp,
+        dataCacheKey,
         dataVersion,
         enableAverages,
         estimatedItemSize,
         getEstimatedItemSize: useWrapIfItem(getEstimatedItemSize),
         getFixedItemSize: useWrapIfItem(getFixedItemSize),
         getItemType: useWrapIfItem(getItemType),
+        getLayoutKey: useWrapIfItem(getLayoutKey),
         horizontal: !!horizontal,
         initialContainerPoolRatio,
         initialScroll,
@@ -350,11 +384,11 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
             refState.current!.isStartReached =
                 initialContentOffset < refState.current!.scrollLength * onStartReachedThreshold!;
 
-            if (initialContentOffset > 0) {
-                scrollTo(state, {
-                    animated: false,
-                    index,
-                    isInitialScroll: true,
+    if (initialContentOffset > 0) {
+        scrollTo(state, {
+            animated: false,
+            index,
+            isInitialScroll: true,
                     offset: initialContentOffset,
                     viewPosition: index === dataProp.length - 1 ? 1 : 0,
                 });
@@ -365,9 +399,16 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
         return 0;
     }, [renderNum]);
 
+    if (__DEV__ && dataCacheKey !== undefined && !keyExtractorProp && !childrenMode) {
+        warnDevOnce(
+            "dataCacheKey-without-keyExtractor",
+            "dataCacheKey is enabled without an explicit keyExtractor. Snapshot reuse depends on stable item identity, so provide a keyExtractor when using dataCacheKey.",
+        );
+    }
+
     if (isFirst || didDataChange || numColumnsProp !== peek$(ctx, "numColumns")) {
         refState.current.lastBatchingAction = Date.now();
-        if (!keyExtractorProp && !isFirst && didDataChange) {
+        if (!keyExtractorProp && !isFirst && didDataChange && dataCacheKey === undefined) {
             __DEV__ &&
                 !childrenMode &&
                 warnDevOnce(
@@ -379,6 +420,37 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
             refState.current.positions.clear();
         }
     }
+
+    useLayoutEffect(() => {
+        if (!hasSeenDatasetMetadataRef.current) {
+            return;
+        }
+
+        const previousMetadata = previousDatasetMetadataRef.current;
+        const previousSnapshotKey = buildDatasetSnapshotKey(
+            previousMetadata.dataCacheKey,
+            previousMetadata.dataVersion,
+            previousMetadata.geometryCacheKey,
+        );
+        const nextSnapshotKey = buildDatasetSnapshotKey(dataCacheKey, dataVersion, geometryCacheKey);
+
+        if (previousSnapshotKey) {
+            saveDatasetSnapshot(state, previousSnapshotKey, {
+                dataLength: previousMetadata.data.length,
+                dataVersion: previousMetadata.dataVersion,
+                geometryCacheKey: previousMetadata.geometryCacheKey,
+            });
+        }
+
+        state.pendingDataSnapshotRestore = undefined;
+        if (nextSnapshotKey) {
+            const restored = restoreDatasetSnapshot(ctx, state, nextSnapshotKey);
+            if (restored) {
+                state.pendingDataSnapshotRestore = nextSnapshotKey;
+            }
+        }
+
+    }, [dataProp, dataCacheKey, dataVersion, geometryCacheKey]);
 
     const onLayoutHeader = useCallback((rect: LayoutRectangle, fromLayoutEffect: boolean) => {
         const size = rect[horizontal ? "width" : "height"];
@@ -405,9 +477,19 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
     useLayoutEffect(() => {
         const didAllocateContainers = dataProp.length > 0 && doInitialAllocateContainers(ctx, state);
         if (!didAllocateContainers) {
-            checkResetContainers(ctx, state, /*isFirst*/ isFirst, dataProp);
+            checkResetContainers(ctx, state, /*isFirst*/ isFirst, didDataChange, previousDatasetMetadataRef.current.data);
         }
-    }, [dataProp, dataVersion, numColumnsProp]);
+    }, [dataProp, dataVersion, geometryCacheKey, numColumnsProp]);
+
+    useLayoutEffect(() => {
+        previousDatasetMetadataRef.current = {
+            data: dataProp,
+            dataCacheKey,
+            dataVersion,
+            geometryCacheKey,
+        };
+        hasSeenDatasetMetadataRef.current = true;
+    }, [dataProp, dataCacheKey, dataVersion, geometryCacheKey]);
 
     useLayoutEffect(() => {
         set$(ctx, "extraData", extraData);

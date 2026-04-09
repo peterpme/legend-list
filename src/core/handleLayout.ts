@@ -5,6 +5,7 @@ import { doInitialAllocateContainers } from "@/core/doInitialAllocateContainers"
 import { doMaintainScrollAtEnd } from "@/core/doMaintainScrollAtEnd";
 import { type StateContext, set$ } from "@/state/state";
 import type { InternalState, MaintainScrollAtEndOptions } from "@/types";
+import { buildGeometryCacheKey } from "@/utils/buildGeometryCacheKey";
 import { checkAtBottom } from "@/utils/checkAtBottom";
 import { checkAtTop } from "@/utils/checkAtTop";
 import { warnDevOnce } from "@/utils/helpers";
@@ -40,6 +41,12 @@ export function handleLayout(
     if (didChange) {
         state.scrollLength = scrollLength;
         state.otherAxisSize = otherAxisSize;
+        state.geometryCacheKey = buildGeometryCacheKey({
+            horizontal: !!state.props.horizontal,
+            numColumns: state.props.numColumns,
+            columnWrapperStyle: ctx.columnWrapperStyle,
+            otherAxisSize,
+        });
         state.lastBatchingAction = Date.now();
         state.scrollForNextCalculateItemsInView = undefined;
 

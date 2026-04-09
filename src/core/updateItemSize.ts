@@ -5,6 +5,8 @@ import { peek$, type StateContext, set$ } from "@/state/state";
 import type { InternalState, MaintainScrollAtEndOptions } from "@/types";
 import { checkAllSizesKnown } from "@/utils/checkAllSizesKnown";
 import { getItemSize } from "@/utils/getItemSize";
+import { getResolvedLayoutKey } from "@/utils/getResolvedLayoutKey";
+import { warnDevOnce } from "@/utils/helpers";
 
 export function updateItemSize(
     ctx: StateContext,
@@ -17,6 +19,7 @@ export function updateItemSize(
         props: {
             getFixedItemSize,
             getItemType,
+            getLayoutKey,
             horizontal,
             suggestEstimatedItemSize,
             onItemSizeChanged,
@@ -52,9 +55,29 @@ export function updateItemSize(
     let maxOtherAxisSize = peek$(ctx, "otherAxisSize") || 0;
 
     const prevSizeKnown = state.sizesKnown.get(itemKey);
+    const itemData = state.props.data[index];
+    const itemType = getItemType ? (getItemType(itemData, index) ?? "") : "";
+    const resolvedLayoutKey = getLayoutKey ? getResolvedLayoutKey(state, itemData, index) : undefined;
+    const measuredSize = Math.floor((horizontal ? sizeObj.width : sizeObj.height) * 8) / 8;
+    const previousLayoutFamilySize =
+        resolvedLayoutKey !== undefined ? state.layoutSizeCache.get(resolvedLayoutKey) : undefined;
 
     const diff = updateOneItemSize(state, itemKey, sizeObj);
-    const size = Math.floor((horizontal ? sizeObj.width : sizeObj.height) * 8) / 8;
+    const size = measuredSize;
+
+    if (resolvedLayoutKey !== undefined && measuredSize > 0) {
+        state.layoutSizeCache.set(resolvedLayoutKey, measuredSize);
+        if (
+            __DEV__ &&
+            previousLayoutFamilySize !== undefined &&
+            Math.abs(previousLayoutFamilySize - measuredSize) > 0.1
+        ) {
+            warnDevOnce(
+                `layout-size-cache-${resolvedLayoutKey}`,
+                `Exact layout family cache for "${resolvedLayoutKey}" changed from ${previousLayoutFamilySize} to ${measuredSize}. getLayoutKey must only group items with identical measured sizes.`,
+            );
+        }
+    }
 
     if (diff !== 0) {
         minIndexSizeChanged = minIndexSizeChanged !== undefined ? Math.min(minIndexSizeChanged, index) : index;
@@ -88,7 +111,7 @@ export function updateItemSize(
         // Call onItemSizeChanged callback
         onItemSizeChanged?.({
             index,
-            itemData: state.props.data[index],
+            itemData,
             itemKey,
             previous: size - diff,
             size,

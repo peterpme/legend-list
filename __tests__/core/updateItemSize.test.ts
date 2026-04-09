@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from "bun:test";
+import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import "../setup"; // Import global test setup
 
 import { updateItemSize, updateOneItemSize } from "../../src/core/updateItemSize";
@@ -24,6 +24,7 @@ describe("updateItemSize functions", () => {
         mockState = createMockState({
             averageSizes: {},
             columns: new Map(),
+            geometryCacheKey: "geo-a",
             dataChangeNeedsScrollUpdate: false,
             endBuffered: 4,
             endReachedBlockedByTimer: false,
@@ -58,9 +59,10 @@ describe("updateItemSize functions", () => {
                     { id: "item5", name: "Fifth" },
                 ],
                 estimatedItemSize: 100,
-                getEstimatedItemSize: undefined,
-                horizontal: false,
-                maintainScrollAtEnd: false,
+                    getEstimatedItemSize: undefined,
+                    getLayoutKey: (item: any) => item?.family,
+                    horizontal: false,
+                    maintainScrollAtEnd: false,
                 maintainVisibleContentPosition: undefined,
                 onItemSizeChanged: (event: any) => onItemSizeChangedCalls.push(event),
                 stickyIndicesArr: [],
@@ -79,6 +81,7 @@ describe("updateItemSize functions", () => {
             scrollTime: 0,
             sizes: new Map(),
             sizesKnown: new Map(),
+            layoutSizeCache: new Map(),
             startBuffered: 0,
             startReachedBlockedByTimer: false,
             stickyContainerPool: new Set(),
@@ -200,6 +203,37 @@ describe("updateItemSize functions", () => {
             expect(onItemSizeChangedCalls.length).toBe(1);
             expect(mockState.totalSize).not.toBe(prevTotal);
             expect(mockCtx.values.get("totalSize")).toBe(mockState.totalSize);
+        });
+
+        it("should write through exact layout-family sizes", () => {
+            mockState.layoutSizeCache.set("geo-a|item1", 100);
+            mockState.indexByKey.set("item_0", 0);
+            mockState.props.data[0] = { id: "item1", family: "item1" };
+
+            updateItemSize(mockCtx, mockState, "item_0", { height: 150, width: 400 });
+
+            expect(mockState.layoutSizeCache.get("geo-a|item1")).toBe(150);
+            expect(mockState.sizesKnown.get("item_0")).toBe(150);
+        });
+
+        it("should warn once when a layout-family cache is not exact", () => {
+            const warnSpy = spyOn(console, "warn").mockImplementation(() => {});
+            const originalDev = (globalThis as any).__DEV__;
+            (globalThis as any).__DEV__ = true;
+            mockState.geometryCacheKey = "geo-warn";
+            mockState.layoutSizeCache.set("geo-warn|family-a", 100);
+            mockState.indexByKey.set("item_0", 0);
+            mockState.props.data[0] = { id: "item1", family: "family-a" };
+
+            try {
+                updateItemSize(mockCtx, mockState, "item_0", { height: 150, width: 400 });
+                updateItemSize(mockCtx, mockState, "item_0", { height: 180, width: 400 });
+            } finally {
+                (globalThis as any).__DEV__ = originalDev;
+            }
+
+            expect(mockState.layoutSizeCache.get("geo-warn|family-a")).toBe(180);
+            expect(warnSpy.mock.calls.length).toBe(1);
         });
 
         it("should respect early return when data is missing", () => {

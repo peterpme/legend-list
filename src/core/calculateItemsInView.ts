@@ -123,7 +123,7 @@ function handleStickyRecycling(
 export function calculateItemsInView(
     ctx: StateContext,
     state: InternalState,
-    params: { doMVCP?: boolean; dataChanged?: boolean } = {},
+    params: { doMVCP?: boolean; dataChanged?: boolean; restoredDataSnapshot?: boolean } = {},
 ) {
     batchedUpdates(() => {
         const {
@@ -152,7 +152,7 @@ export function calculateItemsInView(
         const totalSize = peek$(ctx, "totalSize");
         const topPad = peek$(ctx, "stylePaddingTop") + peek$(ctx, "headerSize");
         const numColumns = peek$(ctx, "numColumns");
-        const { dataChanged, doMVCP } = params;
+        const { dataChanged, doMVCP, restoredDataSnapshot } = params;
         const speed = getScrollVelocity(state);
 
         ////// Calculate scroll state
@@ -224,7 +224,7 @@ export function calculateItemsInView(
         // Handle maintainVisibleContentPosition adjustment early
         const checkMVCP = doMVCP ? prepareMVCP(ctx, state, dataChanged) : undefined;
 
-        if (dataChanged) {
+        if (dataChanged && !restoredDataSnapshot) {
             indexByKey.clear();
             idCache.length = 0;
             positions.clear();
@@ -233,11 +233,13 @@ export function calculateItemsInView(
         // Update all positions upfront so we can assume they're correct
         // Use minIndexSizeChanged to avoid recalculating from index 0 when only later items changed
         const startIndex = dataChanged ? 0 : (minIndexSizeChanged ?? state.startBuffered ?? 0);
-        updateItemPositions(ctx, state, dataChanged, { scrollBottomBuffered, startIndex });
+        if (!restoredDataSnapshot) {
+            updateItemPositions(ctx, state, dataChanged, { scrollBottomBuffered, startIndex });
 
-        if (minIndexSizeChanged !== undefined) {
-            // Clear minIndexSizeChanged after using it for position updates
-            state.minIndexSizeChanged = undefined;
+            if (minIndexSizeChanged !== undefined) {
+                // Clear minIndexSizeChanged after using it for position updates
+                state.minIndexSizeChanged = undefined;
+            }
         }
 
         checkMVCP?.();
@@ -462,10 +464,9 @@ export function calculateItemsInView(
             }
         }
 
-        // Handle sticky container recycling
-        if (stickyIndicesArr.length > 0) {
-            handleStickyRecycling(ctx, state, stickyIndicesArr, scroll, scrollBuffer, currentStickyIdx, pendingRemoval);
-        }
+        // Handle sticky container recycling even when the sticky list is now empty,
+        // so stale sticky containers are released promptly.
+        handleStickyRecycling(ctx, state, stickyIndicesArr, scroll, scrollBuffer, currentStickyIdx, pendingRemoval);
 
         // Update top positions of all containers
         for (let i = 0; i < numContainers; i++) {
@@ -553,4 +554,8 @@ export function calculateItemsInView(
             }
         }
     });
+
+    if (params.restoredDataSnapshot) {
+        state.pendingDataSnapshotRestore = undefined;
+    }
 }
