@@ -87,6 +87,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         getItemType,
         horizontal,
         initialContainerPoolRatio = 2,
+        initialHeaderSize,
         initialScrollIndex: initialScrollIndexProp,
         initialScrollOffset: initialScrollOffsetProp,
         itemsAreEqual,
@@ -130,6 +131,9 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     const hasAppliedInitialScrollRef = useRef(false);
 
     const ctx = useStateContext();
+    if (initialHeaderSize !== undefined && !ctx.internalState) {
+        ctx.values.set("headerSize", initialHeaderSize);
+    }
     ctx.animatedScrollY = animatedScrollY;
     ctx.columnWrapperStyle = columnWrapperStyle;
 

@@ -1,6 +1,6 @@
 {
-    "name": "@legendapp/list",
-    "version": "2.0.19",
+    "name": "@peterpme/legend-list",
+    "version": "2.0.22",
     "description": "Legend List is a drop-in replacement for FlatList with much better performance and supporting dynamically sized items.",
     "sideEffects": false,
     "private": false,
@@ -17,7 +17,7 @@
     "scripts": {
         "prebuild": "bun run prebuild.ts",
         "build": "tsup && bun run posttsup.ts",
-        "prep-changelog": "bun run prep-changelog.ts",
+        "prep-changelog": "echo",
         "publish": "bun run prep-changelog && bun run build && cd dist && npm publish && cd .. && bun run create-release.ts",
         "publish:next": "bun run build && cd dist && npm publish --tag next",
         "publish:beta": "bun run build && cd dist && npm publish --tag beta",

@@ -176,6 +176,12 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
     ListHeaderComponentStyle?: StyleProp<ViewStyle> | undefined;
 
     /**
+     * Known height of the ListHeaderComponent. Provide this when the header height is known
+     * ahead of time to avoid overcalculating containers on the first render.
+     */
+    initialHeaderSize?: number;
+
+    /**
      * If true, auto-scrolls to end when new items are added.
      * @default false
      */
@@ -377,8 +383,7 @@ export interface DatasetEntry<ItemT> {
     active: boolean;
     /**
      * Per-dataset version token. Increment this when mutating the data array
-     * in place for this specific dataset. Using the shared `dataVersion` prop
-     * would trigger a full rebuild on ALL datasets simultaneously.
+     * in place for this specific dataset.
      */
     dataVersion?: Key;
     /**
@@ -415,7 +420,6 @@ export type LegendListDatasetsProps<ItemT = any> = Omit<LegendListProps<ItemT>, 
         | ((props: LegendListRenderItemProps<ItemT, string | undefined>) => ReactNode)
         | React.ComponentType<LegendListRenderItemProps<ItemT, string | undefined>>;
 };
-
 export interface InternalState {
     positions: Map<string, number>;
     columns: Map<string, number>;
