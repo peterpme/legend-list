@@ -111,6 +111,22 @@ This means switching back to a tab you were just on is nearly free — the conta
 
 The `ListHeaderComponent` and `ListFooterComponent` are rendered once in the parent ScrollView. When they're measured, their sizes are broadcast to **every** dataset so each layer's position calculations correctly account for the header/footer offset.
 
+### Container Allocation & Header Size (`src/core/doInitialAllocateContainers.ts`)
+
+When a dataset first allocates its container pool, it calculates how many containers are needed based on the viewport size. The header takes up part of the viewport, so the formula subtracts `headerSize` from `scrollLength`:
+
+```
+numContainers = ceil(((scrollLength - headerSize) + scrollBuffer * 2) / averageItemSize * numColumns)
+```
+
+Without this, LegendList would overallocate containers — if your header is 300px and viewport is 800px, you'd get containers for 800px of items instead of the 500px that's actually available. Use the `initialHeaderSize` prop to provide the header height upfront so this calculation is correct on the very first render, before the header has been measured.
+
+### Scroll Range Caching (`src/core/calculateItemsInView.ts`)
+
+`calculateItemsInView` is the function that determines which items are visible and assigns them to containers. It runs on every scroll event, but has a fast path: it caches the scroll range (`scrollForNextCalculateItemsInView`) that the current container assignments are valid for. If the next scroll offset is still within that range, it **early-returns** and skips all the position calculations, container lookups, and state updates.
+
+This is what makes dataset tab switching fast — when a dataset is reactivated, `calculateItemsInView` runs but checks the cached range first. If you haven't scrolled far enough to invalidate it, the function returns immediately. The containers are already in the right positions with the right items from last time.
+
 ---
 
 ## ⚡ Performance Tips
