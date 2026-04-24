@@ -80,6 +80,25 @@ describe("getRenderedItem", () => {
             expect(element.props.children).toBe("Item Second at 1");
         });
 
+        it("should pass datasetKey through renderItem and getItemType", () => {
+            let capturedDatasetKeyFromType: string | undefined;
+            mockState.props.datasetKey = "futures";
+            mockState.props.getItemType = (_item: any, _index: number, datasetKey?: string) => {
+                capturedDatasetKeyFromType = datasetKey;
+                return `${datasetKey}-row`;
+            };
+            mockState.props.renderItem = (props: any) => props;
+
+            const result = getRenderedItem(mockCtx, mockState, "item_0");
+
+            expect(result).not.toBeNull();
+            expect(result!.renderedItem).toMatchObject({
+                datasetKey: "futures",
+                type: "futures-row",
+            });
+            expect(capturedDatasetKeyFromType).toBe("futures");
+        });
+
         it("should handle different item types", () => {
             mockState.props.data = ["apple", "banana", "cherry"];
             mockState.indexByKey = new Map([
@@ -247,11 +266,13 @@ describe("getRenderedItem", () => {
         });
 
         it("should handle corrupted context", () => {
-            mockCtx.values = null as any;
+            mockCtx.values = {
+                get: () => undefined,
+            } as any;
 
             expect(() => {
                 getRenderedItem(mockCtx, mockState, "item_0");
-            }).not.toThrow(); // peek$ handles null values gracefully
+            }).not.toThrow();
         });
 
         it("should handle different extraData types", () => {

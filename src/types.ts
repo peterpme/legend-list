@@ -115,7 +115,7 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
      * In case you have distinct item sizes, you can provide a function to get the size of an item.
      * Use instead of FlatList's getItemLayout or FlashList overrideItemLayout if you want to have accurate initialScrollOffset, you should provide this function
      */
-    getEstimatedItemSize?: (index: number, item: ItemT, type: TItemType) => number;
+    getEstimatedItemSize?: (index: number, item: ItemT, type: TItemType, datasetKey?: string) => number;
 
     /**
      * Ratio of initial container pool size to data length (e.g., 0.5 for half).
@@ -148,7 +148,7 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
     /**
      * Function to extract a unique key for each item.
      */
-    keyExtractor?: (item: ItemT, index: number) => string;
+    keyExtractor?: (item: ItemT, index: number, datasetKey?: string) => string;
 
     /**
      * Component or element to render when the list is empty.
@@ -326,9 +326,9 @@ interface LegendListSpecificProps<ItemT, TItemType extends string | undefined> {
      */
     stickyHeaderConfig?: StickyHeaderConfig;
 
-    getItemType?: (item: ItemT, index: number) => TItemType;
+    getItemType?: (item: ItemT, index: number, datasetKey?: string) => TItemType;
 
-    getFixedItemSize?: (index: number, item: ItemT, type: TItemType) => number | undefined;
+    getFixedItemSize?: (index: number, item: ItemT, type: TItemType, datasetKey?: string) => number | undefined;
 
     itemsAreEqual?: (itemPrevious: ItemT, item: ItemT, index: number, data: readonly ItemT[]) => boolean;
 }
@@ -379,8 +379,6 @@ export interface DatasetEntry<ItemT> {
     key: string;
     /** Data array for this dataset */
     data: ReadonlyArray<ItemT>;
-    /** Whether this dataset is the currently visible one */
-    active: boolean;
     /**
      * Per-dataset version token. Increment this when mutating the data array
      * in place for this specific dataset.
@@ -391,7 +389,7 @@ export interface DatasetEntry<ItemT> {
      * of different shapes (e.g. spot items use item.spotId, futures use item.futuresId).
      * Falls back to the shared keyExtractor prop if not provided.
      */
-    keyExtractor?: (item: ItemT, index: number) => string;
+    keyExtractor?: (item: ItemT, index: number, datasetKey?: string) => string;
     /**
      * Per-dataset estimated item size in pixels.
      * Falls back to the shared estimatedItemSize prop if not provided.
@@ -401,20 +399,21 @@ export interface DatasetEntry<ItemT> {
      * Per-dataset function to get estimated item size.
      * Falls back to the shared getEstimatedItemSize prop if not provided.
      */
-    getEstimatedItemSize?: (index: number, item: ItemT, type: string | undefined) => number;
+    getEstimatedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey?: string) => number;
     /**
      * Per-dataset function to get fixed item size.
      * Falls back to the shared getFixedItemSize prop if not provided.
      */
-    getFixedItemSize?: (index: number, item: ItemT, type: string | undefined) => number | undefined;
+    getFixedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey?: string) => number | undefined;
     /**
      * Per-dataset function to get item type for container recycling.
      * Falls back to the shared getItemType prop if not provided.
      */
-    getItemType?: (item: ItemT, index: number) => string | undefined;
+    getItemType?: (item: ItemT, index: number, datasetKey?: string) => string | undefined;
 }
 
 export type LegendListDatasetsProps<ItemT = any> = Omit<LegendListProps<ItemT>, "data" | "children" | "dataVersion" | "renderItem"> & {
+    activeDatasetKey: string;
     datasets: DatasetEntry<ItemT>[];
     renderItem:
         | ((props: LegendListRenderItemProps<ItemT, string | undefined>) => ReactNode)
@@ -520,6 +519,7 @@ export interface InternalState {
         suggestEstimatedItemSize: boolean;
         stylePaddingBottom: number | undefined;
         renderItem: LegendListProps["renderItem"];
+        datasetKey?: string;
         initialScroll: ScrollIndexWithOffset | undefined;
         scrollBuffer: number;
         numColumns: number;
@@ -550,6 +550,7 @@ export interface LegendListRenderItemProps<
     index: number;
     data: readonly ItemT[];
     extraData: any;
+    datasetKey?: string;
 }
 
 export type ScrollState = {

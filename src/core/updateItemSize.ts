@@ -21,6 +21,7 @@ export function updateItemSize(
             suggestEstimatedItemSize,
             onItemSizeChanged,
             data,
+            datasetKey,
             maintainScrollAtEnd,
         },
     } = state;
@@ -36,8 +37,8 @@ export function updateItemSize(
         if (itemData === undefined) {
             return;
         }
-        const type = getItemType ? (getItemType(itemData, index) ?? "") : "";
-        const size = getFixedItemSize(index, itemData, type);
+        const type = getItemType ? (getItemType(itemData, index, datasetKey) ?? "") : "";
+        const size = getFixedItemSize(index, itemData, type, datasetKey);
         if (size !== undefined && size === sizesKnown.get(itemKey)) {
             return;
         }
@@ -141,7 +142,7 @@ export function updateOneItemSize(state: InternalState, itemKey: string, sizeObj
         indexByKey,
         sizesKnown,
         averageSizes,
-        props: { data, horizontal, getEstimatedItemSize, getItemType, getFixedItemSize },
+        props: { data, datasetKey, horizontal, getEstimatedItemSize, getItemType, getFixedItemSize },
     } = state;
     if (!data) return 0;
 
@@ -157,7 +158,7 @@ export function updateOneItemSize(state: InternalState, itemKey: string, sizeObj
     // Don't update averages if size is 0, because it likely is rendering conditionally
     // and that shouldn't affect averages.
     if (!getEstimatedItemSize && !getFixedItemSize && size > 0) {
-        const itemType = getItemType ? (getItemType(data[index], index) ?? "") : "";
+        const itemType = getItemType ? (getItemType(data[index], index, datasetKey) ?? "") : "";
         let averages = averageSizes[itemType];
         if (!averages) {
             averages = averageSizes[itemType] = { avg: 0, num: 0 };

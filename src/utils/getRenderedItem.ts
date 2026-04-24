@@ -11,7 +11,7 @@ export function getRenderedItem(ctx: StateContext, state: InternalState, key: st
 
     const {
         indexByKey,
-        props: { data, getItemType, renderItem },
+        props: { data, datasetKey, getItemType, renderItem },
     } = state;
 
     const index = indexByKey.get(key);
@@ -28,10 +28,11 @@ export function getRenderedItem(ctx: StateContext, state: InternalState, key: st
     if (renderItem && !isNullOrUndefined(item)) {
         const itemProps = {
             data,
+            datasetKey,
             extraData,
             index,
             item,
-            type: getItemType ? (getItemType(item, index) ?? "") : "",
+            type: getItemType ? (getItemType(item, index, datasetKey) ?? "") : "",
         };
 
         renderedItem = isFunction(renderItem) ? renderItem(itemProps) : React.createElement(renderItem, itemProps);

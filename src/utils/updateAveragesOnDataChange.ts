@@ -23,7 +23,7 @@ export function updateAveragesOnDataChange<ItemT>(
         averageSizes,
         sizesKnown,
         indexByKey,
-        props: { itemsAreEqual, getItemType, keyExtractor },
+        props: { datasetKey, itemsAreEqual, getItemType, keyExtractor },
     } = state;
 
     if (!itemsAreEqual || !oldData.length || !newData.length) {
@@ -43,7 +43,7 @@ export function updateAveragesOnDataChange<ItemT>(
     // Process each new item to see if it matches an old item
     for (let newIndex = 0; newIndex < newDataLength; newIndex++) {
         const newItem = newData[newIndex];
-        const id = keyExtractor ? keyExtractor(newItem, newIndex) : String(newIndex);
+        const id = keyExtractor ? keyExtractor(newItem, newIndex, datasetKey) : String(newIndex);
 
         // Look up the old index for this item ID
         const oldIndex = indexByKey.get(id);
@@ -60,7 +60,7 @@ export function updateAveragesOnDataChange<ItemT>(
 
             if (areEqual) {
                 // Preserve this item's size in the averages calculation
-                const itemType = getItemType ? (getItemType(newItem, newIndex) ?? "") : "";
+                const itemType = getItemType ? (getItemType(newItem, newIndex, datasetKey) ?? "") : "";
 
                 let typeData = itemTypesToPreserve[itemType];
                 if (!typeData) {

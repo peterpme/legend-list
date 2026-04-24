@@ -15,7 +15,7 @@ import {
 
 import { DatasetLayer, type DatasetLayerHandle } from "@/components/DatasetLayer";
 import { LayoutView } from "@/components/LayoutView";
-import { IsNewArchitecture } from "@/constants";
+import { ENABLE_DEBUG_VIEW, IsNewArchitecture } from "@/constants";
 import { finishScrollTo } from "@/core/finishScrollTo";
 import { scrollTo } from "@/core/scrollTo";
 import { scrollToIndex } from "@/core/scrollToIndex";
@@ -27,7 +27,7 @@ import { typedForwardRef, typedMemo } from "@/types";
 import { createColumnWrapperStyle } from "@/utils/createColumnWrapperStyle";
 import { getComponent } from "@/utils/getComponent";
 import { getId } from "@/utils/getId";
-import { extractPadding } from "@/utils/helpers";
+import { extractPadding, warnDevOnce } from "@/utils/helpers";
 
 // Style applied to wrapper of each inactive dataset layer so it doesn't affect
 // scroll content size while keeping native layout warm for instant reactivation.
@@ -92,6 +92,7 @@ export const LegendListDatasets = typedMemo(
     ) {
         const {
             datasets,
+            activeDatasetKey,
             renderItem,
             alignItemsAtEnd,
             columnWrapperStyle,
@@ -157,15 +158,26 @@ export const LegendListDatasets = typedMemo(
         // Track current scroll offset so we can pass it to a newly-activated dataset
         const currentScrollRef = useRef(0);
 
-        // One ref slot per dataset, indexed by position
-        const layerRefs = useRef<Array<DatasetLayerHandle | null>>([]);
+        const layerRefs = useRef(new Map<string, DatasetLayerHandle | null>());
+        const layerRefCallbacks = useRef(new Map<string, (handle: DatasetLayerHandle | null) => void>());
 
-        const activeIndex = datasets.findIndex((d) => d.active);
-        // Stable ref so imperative handle methods always see the current active index
-        const activeIndexRef = useRef(activeIndex);
-        activeIndexRef.current = activeIndex;
+        const activeIndex = datasets.findIndex((d) => d.key === activeDatasetKey);
+        const resolvedActiveIndex = activeIndex >= 0 ? activeIndex : 0;
+        const activeDataset = resolvedActiveIndex >= 0 ? datasets[resolvedActiveIndex] : undefined;
+        const resolvedActiveDatasetKey = activeDataset?.key;
 
-        const prevActiveIndexRef = useRef(activeIndex);
+        if (ENABLE_DEBUG_VIEW && datasets.length > 0 && activeIndex === -1) {
+            warnDevOnce(
+                `LegendListDatasets.activeDatasetKey.${activeDatasetKey}`,
+                `LegendListDatasets: activeDatasetKey "${activeDatasetKey}" does not match any dataset key. Falling back to the first dataset.`,
+            );
+        }
+
+        // Stable ref so imperative handle methods always see the current active dataset
+        const activeKeyRef = useRef<string | undefined>(resolvedActiveDatasetKey);
+        activeKeyRef.current = resolvedActiveDatasetKey;
+
+        const prevActiveDatasetKeyRef = useRef(resolvedActiveDatasetKey);
         const [activeCtx, setActiveCtx] = useState<StateContext | undefined>(undefined);
 
         const contentContainerStyle = useMemo(
@@ -181,8 +193,23 @@ export const LegendListDatasets = typedMemo(
         const stylePaddingBottomState = extractPadding(style, contentContainerStyle, "Bottom");
 
         const getActiveLayer = useCallback(() => {
-            const index = activeIndexRef.current;
-            return index >= 0 ? layerRefs.current[index] : undefined;
+            const key = activeKeyRef.current;
+            return key ? layerRefs.current.get(key) ?? undefined : undefined;
+        }, []);
+
+        const getLayerRef = useCallback((key: string) => {
+            let refCallback = layerRefCallbacks.current.get(key);
+            if (!refCallback) {
+                refCallback = (handle: DatasetLayerHandle | null) => {
+                    if (handle) {
+                        layerRefs.current.set(key, handle);
+                    } else {
+                        layerRefs.current.delete(key);
+                    }
+                };
+                layerRefCallbacks.current.set(key, refCallback);
+            }
+            return refCallback;
         }, []);
 
         const getActiveCtx = useCallback(() => getActiveLayer()?.getCtx(), [getActiveLayer]);
@@ -191,24 +218,24 @@ export const LegendListDatasets = typedMemo(
 
         // When active dataset changes, tell the newly active layer to catch up
         useLayoutEffect(() => {
-            const prev = prevActiveIndexRef.current;
-            prevActiveIndexRef.current = activeIndex;
-            if (prev !== activeIndex && activeIndex >= 0) {
-                layerRefs.current[activeIndex]?.activate(currentScrollRef.current);
+            const prev = prevActiveDatasetKeyRef.current;
+            prevActiveDatasetKeyRef.current = resolvedActiveDatasetKey;
+            if (prev !== resolvedActiveDatasetKey && resolvedActiveDatasetKey) {
+                layerRefs.current.get(resolvedActiveDatasetKey)?.activate(currentScrollRef.current);
             }
-        }, [activeIndex]);
+        }, [resolvedActiveDatasetKey]);
 
         useEffect(() => {
             setActiveCtx(getActiveCtx());
-        }, [activeIndex, getActiveCtx]);
+        }, [resolvedActiveDatasetKey, getActiveCtx]);
 
         const onScrollListener = useCallback(
             (event: NativeSyntheticEvent<NativeScrollEvent>) => {
                 const offset = event.nativeEvent.contentOffset[horizontal ? "x" : "y"];
                 currentScrollRef.current = offset;
-                const idx = activeIndexRef.current;
-                if (idx >= 0) {
-                    layerRefs.current[idx]?.onScrollOffset(offset);
+                const key = activeKeyRef.current;
+                if (key) {
+                    layerRefs.current.get(key)?.onScrollOffset(offset);
                 }
                 onScrollProp?.(event);
             },
@@ -230,7 +257,7 @@ export const LegendListDatasets = typedMemo(
 
         const onLayoutChange = useCallback((layout: LayoutRectangle) => {
             // Propagate viewport size to ALL layers so each can allocate containers
-            for (const ref of layerRefs.current) {
+            for (const ref of layerRefs.current.values()) {
                 ref?.setViewportLayout({ height: layout.height, width: layout.width, x: 0, y: 0 });
             }
         }, []);
@@ -244,7 +271,7 @@ export const LegendListDatasets = typedMemo(
         const onLayoutHeader = useCallback(
             (rect: LayoutRectangle) => {
                 const size = rect[horizontal ? "width" : "height"];
-                for (const ref of layerRefs.current) {
+                for (const ref of layerRefs.current.values()) {
                     ref?.setHeaderSize(size);
                 }
             },
@@ -254,7 +281,7 @@ export const LegendListDatasets = typedMemo(
         const onLayoutFooter = useCallback(
             (rect: LayoutRectangle) => {
                 const size = rect[horizontal ? "width" : "height"];
-                for (const ref of layerRefs.current) {
+                for (const ref of layerRefs.current.values()) {
                     ref?.setFooterSize(size);
                 }
             },
@@ -273,7 +300,7 @@ export const LegendListDatasets = typedMemo(
             if (!ctx) return;
             setSnapOffsets(peek$(ctx, "snapToOffsets"));
             return listen$(ctx, "snapToOffsets", setSnapOffsets);
-        }, [activeIndex, getActiveCtx, snapToIndices]);
+        }, [resolvedActiveDatasetKey, getActiveCtx, snapToIndices]);
 
         // Wire up the imperative ref — delegates to the active dataset's ctx/state
         useImperativeHandle(forwardedRef, () => {
@@ -507,7 +534,6 @@ export const LegendListDatasets = typedMemo(
             ],
         );
 
-        const activeDataset = activeIndex >= 0 ? datasets[activeIndex] : undefined;
         const showEmpty = ListEmptyComponent && activeDataset && activeDataset.data.length === 0;
 
         return (
@@ -549,27 +575,29 @@ export const LegendListDatasets = typedMemo(
                 )}
                 {showEmpty && getComponent(ListEmptyComponent)}
                 {!showEmpty &&
-                    datasets.map((dataset, index) => (
-                        <View key={dataset.key} style={dataset.active ? undefined : INACTIVE_LAYER_STYLE}>
-                            <DatasetLayer
-                                {...sharedLayerProps}
-                                active={dataset.active}
+                    datasets.map((dataset) => {
+                        const isActive = dataset.key === resolvedActiveDatasetKey;
+                        return (
+                            <View key={dataset.key} style={isActive ? undefined : INACTIVE_LAYER_STYLE}>
+                                <DatasetLayer
+                                    {...sharedLayerProps}
+                                active={isActive}
                                 data={dataset.data}
                                 dataVersion={dataset.dataVersion}
+                                datasetKey={dataset.key}
                                 estimatedItemSize={dataset.estimatedItemSize ?? sharedLayerProps.estimatedItemSize}
-                                getEstimatedItemSize={
-                                    dataset.getEstimatedItemSize ?? sharedLayerProps.getEstimatedItemSize
-                                }
-                                getFixedItemSize={dataset.getFixedItemSize ?? sharedLayerProps.getFixedItemSize}
-                                getItemType={dataset.getItemType ?? sharedLayerProps.getItemType}
-                                keyExtractor={dataset.keyExtractor ?? sharedLayerProps.keyExtractor}
-                                ref={(handle: DatasetLayerHandle | null) => {
-                                    layerRefs.current[index] = handle;
-                                }}
-                                refScroller={refScroller}
-                            />
-                        </View>
-                    ))}
+                                    getEstimatedItemSize={
+                                        dataset.getEstimatedItemSize ?? sharedLayerProps.getEstimatedItemSize
+                                    }
+                                    getFixedItemSize={dataset.getFixedItemSize ?? sharedLayerProps.getFixedItemSize}
+                                    getItemType={dataset.getItemType ?? sharedLayerProps.getItemType}
+                                    keyExtractor={dataset.keyExtractor ?? sharedLayerProps.keyExtractor}
+                                    ref={getLayerRef(dataset.key)}
+                                    refScroller={refScroller}
+                                />
+                            </View>
+                        );
+                    })}
                 {ListFooterComponent && (
                     <LayoutView onLayoutChange={onLayoutFooter} style={ListFooterComponentStyle}>
                         {getComponent(ListFooterComponent)}

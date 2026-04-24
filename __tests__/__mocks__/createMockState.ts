@@ -72,6 +72,7 @@ export function createMockState(
             alignItemsAtEnd: false,
             data: [],
             dataVersion: undefined,
+            datasetKey: undefined,
             enableAverages: true,
             estimatedItemSize: undefined,
             getEstimatedItemSize: undefined,

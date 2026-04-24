@@ -56,6 +56,20 @@ describe("getId", () => {
             expect(result).toBe("fruit_banana");
             expect(mockState.idCache[1]).toBe("fruit_banana");
         });
+
+        it("should pass datasetKey to keyExtractor", () => {
+            let capturedDatasetKey: string | undefined;
+            mockState.props.datasetKey = "favorites";
+            mockState.props.keyExtractor = (item: any, _index: number, datasetKey?: string) => {
+                capturedDatasetKey = datasetKey;
+                return `${datasetKey}:${item.id}`;
+            };
+
+            const result = getId(mockState, 0);
+
+            expect(result).toBe("favorites:item1");
+            expect(capturedDatasetKey).toBe("favorites");
+        });
     });
 
     describe("edge cases", () => {

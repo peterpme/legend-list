@@ -142,6 +142,25 @@ describe("getItemSize", () => {
             expect(capturedData).toBe(testData);
         });
 
+        it("should pass datasetKey to getEstimatedItemSize", () => {
+            let capturedDatasetKey: string | undefined;
+            mockState.props.datasetKey = "lend";
+            mockState.props.getEstimatedItemSize = (
+                _index: number,
+                _data: any,
+                _type: string | undefined,
+                datasetKey?: string,
+            ) => {
+                capturedDatasetKey = datasetKey;
+                return 77;
+            };
+
+            const result = getItemSize(mockState, "item_0", 0, { id: 0 });
+
+            expect(result).toBe(77);
+            expect(capturedDatasetKey).toBe("lend");
+        });
+
         it("should return undefined when getEstimatedItemSize returns undefined", () => {
             mockState.props.getEstimatedItemSize = () => undefined as any;
 
@@ -221,6 +240,32 @@ describe("getItemSize", () => {
             const result = getItemSize(mockState, "item_0", 0, { id: 0 });
 
             expect(result).toBe(200); // Function takes precedence over static value
+        });
+
+        it("should pass datasetKey through getItemType and getFixedItemSize", () => {
+            const calls: Array<{ fn: string; datasetKey?: string }> = [];
+            mockState.props.datasetKey = "spots";
+            mockState.props.getItemType = (_item: any, _index: number, datasetKey?: string) => {
+                calls.push({ datasetKey, fn: "getItemType" });
+                return "market-row";
+            };
+            mockState.props.getFixedItemSize = (
+                _index: number,
+                _item: any,
+                _type: string | undefined,
+                datasetKey?: string,
+            ) => {
+                calls.push({ datasetKey, fn: "getFixedItemSize" });
+                return 123;
+            };
+
+            const result = getItemSize(mockState, "item_0", 0, { id: 0 });
+
+            expect(result).toBe(123);
+            expect(calls).toEqual([
+                { datasetKey: "spots", fn: "getItemType" },
+                { datasetKey: "spots", fn: "getFixedItemSize" },
+            ]);
         });
     });
 

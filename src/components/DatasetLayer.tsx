@@ -50,6 +50,7 @@ export interface DatasetLayerHandle {
 // plus the per-dataset data/dataVersion and the parent scroll ref.
 export type DatasetLayerProps<T> = Omit<
     LegendListDatasetsProps<T>,
+    | "activeDatasetKey"
     | "datasets"
     | "ListHeaderComponent"
     | "ListHeaderComponentStyle"
@@ -62,6 +63,7 @@ export type DatasetLayerProps<T> = Omit<
     animatedScrollY: Animated.Value;
     data: ReadonlyArray<T>;
     dataVersion?: DatasetEntry<T>["dataVersion"];
+    datasetKey?: string;
     refScroller: React.RefObject<ScrollView>;
     stylePaddingBottom: number;
     stylePaddingTop: number;
@@ -77,6 +79,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         columnWrapperStyle,
         data: dataProp = [],
         dataVersion,
+        datasetKey,
         drawDistance = DEFAULT_DRAW_DISTANCE,
         enableAverages = true,
         estimatedItemSize: estimatedItemSizeProp,
@@ -223,6 +226,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         alignItemsAtEnd,
         data: dataProp,
         dataVersion,
+        datasetKey,
         enableAverages,
         estimatedItemSize,
         getEstimatedItemSize: useWrapIfItem(getEstimatedItemSize),

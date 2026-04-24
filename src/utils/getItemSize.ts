@@ -7,7 +7,7 @@ export function getItemSize(state: InternalState, key: string, index: number, da
         sizes,
         scrollingTo,
         averageSizes,
-        props: { estimatedItemSize, getEstimatedItemSize, getFixedItemSize, getItemType },
+        props: { datasetKey, estimatedItemSize, getEstimatedItemSize, getFixedItemSize, getItemType },
     } = state;
     const sizeKnown = sizesKnown.get(key)!;
     if (sizeKnown !== undefined) {
@@ -16,10 +16,10 @@ export function getItemSize(state: InternalState, key: string, index: number, da
 
     let size: number | undefined;
 
-    const itemType = getItemType ? (getItemType(data, index) ?? "") : "";
+    const itemType = getItemType ? (getItemType(data, index, datasetKey) ?? "") : "";
 
     if (getFixedItemSize) {
-        size = getFixedItemSize(index, data, itemType);
+        size = getFixedItemSize(index, data, itemType, datasetKey);
         if (size !== undefined) {
             sizesKnown.set(key, size);
         }
@@ -44,7 +44,7 @@ export function getItemSize(state: InternalState, key: string, index: number, da
 
     if (size === undefined) {
         // Get estimated size if we don't have an average or already cached size
-        size = getEstimatedItemSize ? getEstimatedItemSize(index, data, itemType) : estimatedItemSize!;
+        size = getEstimatedItemSize ? getEstimatedItemSize(index, data, itemType, datasetKey) : estimatedItemSize!;
     }
 
     // Save to rendered sizes

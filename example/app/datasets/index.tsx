@@ -97,11 +97,10 @@ const App = () => {
     const datasets: DatasetEntry<Country>[] = useMemo(
         () =>
             TABS.map((tab) => ({
-                active: activeTab === tab,
                 data: DATASETS[tab],
                 key: tab,
             })),
-        [activeTab],
+        [],
     );
 
     const renderItem = useCallback(({ item }: { item: Country }) => <CountryItem item={item} />, []);
@@ -112,6 +111,7 @@ const App = () => {
         <SafeAreaProvider>
             <SafeAreaView style={styles.container}>
                 <LegendListDatasets
+                    activeDatasetKey={activeTab}
                     datasets={datasets}
                     estimatedItemSize={60}
                     keyExtractor={keyExtractor}

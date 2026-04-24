@@ -397,7 +397,7 @@ export function calculateItemsInView(
                 // Calculate required item types for type-safe container reuse
                 const requiredItemTypes = getItemType
                     ? needNewContainers.map((i) => {
-                          const itemType = getItemType(data[i], i);
+                          const itemType = getItemType(data[i], i, state.props.datasetKey);
                           return itemType !== undefined ? String(itemType) : "";
                       })
                     : undefined;
