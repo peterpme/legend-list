@@ -200,6 +200,7 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
 
             ctx.internalState = {
                 activeStickyIndex: undefined,
+                activationScrollPending: undefined,
                 averageSizes: {},
                 columns: new Map(),
                 containerItemKeys: new Set(),
@@ -223,6 +224,7 @@ const LegendListInner = typedForwardRef(function LegendListInner<T>(
                 loadStartTime: Date.now(),
                 minIndexSizeChanged: 0,
                 nativeMarginTop: 0,
+                needsActivationRecalc: false,
                 positions: new Map(),
                 props: {} as any,
                 queuedCalculateItemsInView: 0,

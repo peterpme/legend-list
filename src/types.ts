@@ -441,6 +441,7 @@ export interface InternalState {
     idsInView: string[];
     scrollPending: number;
     scroll: number;
+    activationScrollPending?: number;
     scrollTime: number;
     scrollPrev: number;
     scrollPrevTime: number;
@@ -456,6 +457,7 @@ export interface InternalState {
     viewabilityConfigCallbackPairs: ViewabilityConfigCallbackPairs<any> | undefined;
     scrollHistory: Array<{ scroll: number; time: number }>;
     lastScrollAdjustForHistory?: number;
+    needsActivationRecalc?: boolean;
     startReachedBlockedByTimer: boolean;
     endReachedBlockedByTimer: boolean;
     scrollForNextCalculateItemsInView: { top: number; bottom: number } | undefined;

@@ -155,6 +155,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
 
             ctx.internalState = {
                 activeStickyIndex: undefined,
+                activationScrollPending: undefined,
                 averageSizes: {},
                 columns: new Map(),
                 containerItemKeys: new Set(),
@@ -178,6 +179,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                 loadStartTime: Date.now(),
                 minIndexSizeChanged: 0,
                 nativeMarginTop: 0,
+                needsActivationRecalc: false,
                 positions: new Map(),
                 props: {} as any,
                 queuedCalculateItemsInView: 0,
@@ -217,6 +219,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     const didDataChange = state.props.dataVersion !== dataVersion || state.props.data !== dataProp;
     if (didDataChange) {
         state.dataChangeNeedsScrollUpdate = true;
+        state.needsActivationRecalc = true;
     }
 
     // Keep initialScroll in sync with props so calculateItemsInView uses it correctly
@@ -277,6 +280,9 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         refState.current!.props.stylePaddingBottom = stylePaddingBottom;
 
         let paddingDiff = stylePaddingTop - prevPaddingTop;
+        if (prevPaddingTop !== undefined && prevPaddingTop !== stylePaddingTop) {
+            state.needsActivationRecalc = true;
+        }
         if (maintainVisibleContentPosition && paddingDiff && prevPaddingTop !== undefined && Platform.OS === "ios") {
             if (state.scroll < 0) {
                 paddingDiff += state.scroll;
@@ -347,11 +353,26 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                         viewOffset: initialScroll.viewOffset,
                     });
                 } else {
-                    state.scroll = scrollOffset;
+                    const targetScroll = state.scroll;
+                    if (Math.abs(targetScroll - scrollOffset) > 0.5) {
+                        state.activationScrollPending = targetScroll;
+                        state.refScroller.current?.scrollTo({
+                            animated: false,
+                            x: state.props.horizontal ? targetScroll : 0,
+                            y: state.props.horizontal ? 0 : targetScroll,
+                        });
+                    } else {
+                        state.scroll = targetScroll;
+                    }
                 }
-                // Don't clear scrollForNextCalculateItemsInView — let calculateItemsInView
-                // use the cached range to early-return if scroll hasn't moved enough.
-                calculateItemsInView(ctx, state, { dataChanged: false, doMVCP: false });
+                if (state.needsActivationRecalc || state.dataChangeNeedsScrollUpdate) {
+                    calculateItemsInView(ctx, state, {
+                        dataChanged: state.dataChangeNeedsScrollUpdate,
+                        doMVCP: false,
+                    });
+                    state.dataChangeNeedsScrollUpdate = false;
+                    state.needsActivationRecalc = false;
+                }
             },
             getCtx() {
                 return ctx;
@@ -360,6 +381,15 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                 return state;
             },
             onScrollOffset(offset: number) {
+                if (
+                    state.activationScrollPending !== undefined &&
+                    Math.abs(offset - state.activationScrollPending) <= 0.5
+                ) {
+                    state.scroll = offset;
+                    state.activationScrollPending = undefined;
+                    state.lastBatchingAction = Date.now();
+                    return;
+                }
                 state.scroll = offset;
                 state.lastBatchingAction = Date.now();
                 state.dataChangeNeedsScrollUpdate = false;
@@ -368,9 +398,15 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                 checkAtTop(state);
             },
             setFooterSize(size: number) {
+                if (peek$(ctx, "footerSize") !== size) {
+                    state.needsActivationRecalc = true;
+                }
                 set$(ctx, "footerSize", size);
             },
             setHeaderSize(size: number) {
+                if (peek$(ctx, "headerSize") !== size) {
+                    state.needsActivationRecalc = true;
+                }
                 set$(ctx, "headerSize", size);
             },
             setViewportLayout(layout: LayoutRectangle) {
