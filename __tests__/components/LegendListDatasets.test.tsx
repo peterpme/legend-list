@@ -1,22 +1,24 @@
 import React from "react";
+import renderer from "react-test-renderer";
 
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
-import renderer from "react-test-renderer";
 import "../setup";
 
 const datasetLayerPropsLog: any[] = [];
+const datasetLayerHandles = new Map<string, any>();
+const activationLog: Array<{ key: string; offset: number }> = [];
 
 beforeAll(() => {
     mock.module("react-native", () => {
         class AnimatedValue<T = number> {
-            private _value: T;
+            value: T;
 
             constructor(value: T) {
-                this._value = value;
+                this.value = value;
             }
 
             setValue(value: T) {
-                this._value = value;
+                this.value = value;
             }
         }
 
@@ -27,11 +29,11 @@ beforeAll(() => {
 
         return {
             Animated: {
-                Value: AnimatedValue,
-                ScrollView,
-                View: ({ children, ...props }: any) => React.createElement("AnimatedView", props, children),
                 event: (_args: any, config?: { listener?: (...args: any[]) => void }) => (event: any) =>
                     config?.listener?.(event),
+                ScrollView,
+                Value: AnimatedValue,
+                View: ({ children, ...props }: any) => React.createElement("AnimatedView", props, children),
             },
             Dimensions: {
                 get: () => ({ fontScale: 2, height: 667, scale: 2, width: 375 }),
@@ -46,7 +48,7 @@ beforeAll(() => {
                 create: <T extends Record<string, any>>(styles: T): T => styles,
                 flatten: (style: any) => {
                     if (Array.isArray(style)) {
-                        return style.reduce((acc, value) => ({ ...acc, ...(value || {}) }), {});
+                        return Object.assign({}, ...style.filter(Boolean));
                     }
                     return style || {};
                 },
@@ -62,19 +64,19 @@ beforeAll(() => {
     mock.module("@/components/DatasetLayer", () => {
         const DatasetLayer = React.forwardRef((props: any, ref) => {
             datasetLayerPropsLog.push(props);
-            React.useImperativeHandle(
-                ref,
-                () => ({
-                    activate: () => {},
-                    getCtx: () => undefined,
-                    getState: () => undefined,
-                    onScrollOffset: () => {},
-                    setFooterSize: () => {},
-                    setHeaderSize: () => {},
-                    setViewportLayout: () => {},
-                }),
-                [],
-            );
+            const datasetKey = props.datasetKey;
+            const handle = {
+                activate: mock((offset: number) => activationLog.push({ key: datasetKey, offset })),
+                getCtx: mock(() => undefined),
+                getState: mock(() => undefined),
+                onScroll: mock(() => {}),
+                onScrollOffset: mock(() => {}),
+                setFooterSize: mock(() => {}),
+                setHeaderSize: mock(() => {}),
+                setViewportLayout: mock(() => {}),
+            };
+            datasetLayerHandles.set(datasetKey, handle);
+            React.useImperativeHandle(ref, () => handle, [handle]);
             return React.createElement("DatasetLayer", props);
         });
 
@@ -85,6 +87,8 @@ beforeAll(() => {
 describe("LegendListDatasets", () => {
     beforeEach(() => {
         datasetLayerPropsLog.length = 0;
+        datasetLayerHandles.clear();
+        activationLog.length = 0;
     });
 
     it("activates only the dataset matching activeDatasetKey", async () => {
@@ -160,5 +164,105 @@ describe("LegendListDatasets", () => {
 
         expect(propsByDatasetKey.get("spots")?.active).toBe(true);
         expect(propsByDatasetKey.get("futures")?.active).toBe(false);
+    });
+
+    it("activates the initially active dataset on mount", async () => {
+        const { LegendListDatasets } = await import("../../src/components/LegendListDatasets");
+
+        renderer.create(
+            <LegendListDatasets
+                activeDatasetKey="spots"
+                datasets={[
+                    { data: [{ id: "spot-1" }], key: "spots" },
+                    { data: [{ id: "futures-1" }], key: "futures" },
+                ]}
+                keyExtractor={(item: any) => item.id}
+                renderItem={() => null}
+            />,
+        );
+
+        expect(activationLog).toEqual([{ key: "spots", offset: 0 }]);
+    });
+
+    it("keeps dataset layers mounted while showing the empty component", async () => {
+        const { LegendListDatasets } = await import("../../src/components/LegendListDatasets");
+
+        renderer.create(
+            <LegendListDatasets
+                activeDatasetKey="spots"
+                datasets={[
+                    { data: [], key: "spots" },
+                    { data: [{ id: "futures-1" }], key: "futures" },
+                ]}
+                keyExtractor={(item: any) => item.id}
+                ListEmptyComponent={() => React.createElement("Empty")}
+                renderItem={() => null}
+            />,
+        );
+
+        const propsByDatasetKey = new Map(datasetLayerPropsLog.map((props) => [props.datasetKey, props]));
+
+        expect(propsByDatasetKey.get("spots")?.active).toBe(true);
+        expect(propsByDatasetKey.get("futures")?.active).toBe(false);
+    });
+
+    it("replays viewport and header/footer measurements to layers mounted later", async () => {
+        const { LegendListDatasets } = await import("../../src/components/LegendListDatasets");
+        const Header = () => React.createElement("Header");
+        const Footer = () => React.createElement("Footer");
+
+        const tree = renderer.create(
+            <LegendListDatasets
+                activeDatasetKey="spots"
+                datasets={[{ data: [{ id: "spot-1" }], key: "spots" }]}
+                keyExtractor={(item: any) => item.id}
+                ListFooterComponent={Footer}
+                ListHeaderComponent={Header}
+                renderItem={() => null}
+            />,
+        );
+
+        const scrollView = tree.root.findByType("ScrollView");
+        scrollView.props.onLayout({ nativeEvent: { layout: { height: 600, width: 320, x: 0, y: 0 } } });
+
+        const layoutViews = tree.root.findAllByType("LayoutView");
+        layoutViews[0].props.onLayoutChange({ height: 48, width: 320, x: 0, y: 0 }, true);
+        layoutViews[1].props.onLayoutChange({ height: 24, width: 320, x: 0, y: 576 }, true);
+
+        tree.update(
+            <LegendListDatasets
+                activeDatasetKey="spots"
+                datasets={[
+                    { data: [{ id: "spot-1" }], key: "spots" },
+                    { data: [{ id: "futures-1" }], key: "futures" },
+                ]}
+                keyExtractor={(item: any) => item.id}
+                ListFooterComponent={Footer}
+                ListHeaderComponent={Header}
+                renderItem={() => null}
+            />,
+        );
+
+        const futuresHandle = datasetLayerHandles.get("futures");
+        expect(futuresHandle.setViewportLayout).toHaveBeenCalledWith({ height: 600, width: 320, x: 0, y: 0 });
+        expect(futuresHandle.setHeaderSize).toHaveBeenCalledWith(48, false, false);
+        expect(futuresHandle.setFooterSize).toHaveBeenCalledWith(24);
+    });
+
+    it("uses renderScrollComponent for the shared scroll view", async () => {
+        const { LegendListDatasets } = await import("../../src/components/LegendListDatasets");
+        const renderScrollComponent = (scrollProps: any) => React.createElement("CustomScroll", scrollProps);
+
+        const tree = renderer.create(
+            <LegendListDatasets
+                activeDatasetKey="spots"
+                datasets={[{ data: [{ id: "spot-1" }], key: "spots" }]}
+                keyExtractor={(item: any) => item.id}
+                renderItem={() => null}
+                renderScrollComponent={renderScrollComponent}
+            />,
+        );
+
+        expect(tree.root.findByType("CustomScroll")).toBeDefined();
     });
 });

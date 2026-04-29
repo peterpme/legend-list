@@ -71,8 +71,8 @@ export function createMockState(
         props: {
             alignItemsAtEnd: false,
             data: [],
-            dataVersion: undefined,
             datasetKey: undefined,
+            dataVersion: undefined,
             enableAverages: true,
             estimatedItemSize: undefined,
             getEstimatedItemSize: undefined,

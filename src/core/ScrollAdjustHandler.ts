@@ -1,4 +1,4 @@
-import { peek$, type StateContext, set$ } from "@/state/state";
+import { type StateContext, set$ } from "@/state/state";
 
 export class ScrollAdjustHandler {
     private appliedAdjust = 0;

@@ -375,46 +375,47 @@ export interface ColumnWrapperStyle {
 export type LegendListProps<ItemT = any> = LegendListPropsBase<ItemT, ComponentProps<typeof ScrollView>>;
 
 export interface DatasetEntry<ItemT> {
-    /** Unique key for this dataset — used as a React key and for identity */
+    /** Unique key for this dataset, used as a React key and for identity. */
     key: string;
-    /** Data array for this dataset */
+    /** Data array for this dataset. */
     data: ReadonlyArray<ItemT>;
     /**
      * Per-dataset version token. Increment this when mutating the data array
      * in place for this specific dataset.
      */
     dataVersion?: Key;
-    /**
-     * Per-dataset key extractor. Use this when different datasets have items
-     * of different shapes (e.g. spot items use item.spotId, futures use item.futuresId).
-     * Falls back to the shared keyExtractor prop if not provided.
-     */
-    keyExtractor?: (item: ItemT, index: number, datasetKey?: string) => string;
-    /**
-     * Per-dataset estimated item size in pixels.
-     * Falls back to the shared estimatedItemSize prop if not provided.
-     */
-    estimatedItemSize?: number;
-    /**
-     * Per-dataset function to get estimated item size.
-     * Falls back to the shared getEstimatedItemSize prop if not provided.
-     */
-    getEstimatedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey?: string) => number;
-    /**
-     * Per-dataset function to get fixed item size.
-     * Falls back to the shared getFixedItemSize prop if not provided.
-     */
-    getFixedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey?: string) => number | undefined;
-    /**
-     * Per-dataset function to get item type for container recycling.
-     * Falls back to the shared getItemType prop if not provided.
-     */
-    getItemType?: (item: ItemT, index: number, datasetKey?: string) => string | undefined;
 }
 
-export type LegendListDatasetsProps<ItemT = any> = Omit<LegendListProps<ItemT>, "data" | "children" | "dataVersion" | "renderItem"> & {
+export type LegendListDatasetsProps<ItemT = any> = Omit<
+    LegendListProps<ItemT>,
+    | "children"
+    | "data"
+    | "dataVersion"
+    | "estimatedItemSize"
+    | "getEstimatedItemSize"
+    | "getFixedItemSize"
+    | "getItemType"
+    | "keyExtractor"
+    | "renderItem"
+> & {
     activeDatasetKey: string;
     datasets: DatasetEntry<ItemT>[];
+    /**
+     * Function to extract a unique key for each item. The third argument is the dataset key.
+     */
+    keyExtractor?: (item: ItemT, index: number, datasetKey: string) => string;
+    /**
+     * Function to get estimated item size. The fourth argument is the dataset key.
+     */
+    getEstimatedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey: string) => number;
+    /**
+     * Function to get fixed item size. The fourth argument is the dataset key.
+     */
+    getFixedItemSize?: (index: number, item: ItemT, type: string | undefined, datasetKey: string) => number | undefined;
+    /**
+     * Function to get item type for container recycling. The third argument is the dataset key.
+     */
+    getItemType?: (item: ItemT, index: number, datasetKey: string) => string | undefined;
     renderItem:
         | ((props: LegendListRenderItemProps<ItemT, string | undefined>) => ReactNode)
         | React.ComponentType<LegendListRenderItemProps<ItemT, string | undefined>>;
@@ -441,7 +442,6 @@ export interface InternalState {
     idsInView: string[];
     scrollPending: number;
     scroll: number;
-    activationScrollPending?: number;
     scrollTime: number;
     scrollPrev: number;
     scrollPrevTime: number;

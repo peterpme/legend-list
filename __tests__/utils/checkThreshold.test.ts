@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import "../setup"; // Import global test setup
 
-import { checkThreshold } from "../../src/utils/checkThreshold";
 import * as checkThresholdModule from "../../src/utils/checkThreshold";
+import { checkThreshold } from "../../src/utils/checkThreshold";
 
 // CRITICAL: Ensure we're testing the real function, not a mock from other tests
 function ensureRealFunction() {
     // Check if the function has been mocked by other tests
     const fn = checkThresholdModule.checkThreshold;
-    if (fn && typeof fn === 'function' && 'mockRestore' in fn) {
+    if (fn && typeof fn === "function" && "mockRestore" in fn) {
         // Function is mocked, restore it
         (fn as any).mockRestore();
     }
@@ -23,7 +23,7 @@ describe("checkThreshold", () => {
         ensureRealFunction();
         // Store original setTimeout in case other tests mocked it
         originalSetTimeout = globalThis.setTimeout;
-        
+
         // Clear any active timers
         activeTimers.forEach((timer) => clearTimeout(timer));
         activeTimers = [];
@@ -33,7 +33,7 @@ describe("checkThreshold", () => {
         // Clean up any timers that might still be running
         activeTimers.forEach((timer) => clearTimeout(timer));
         activeTimers = [];
-        
+
         // Restore setTimeout if it was changed by other tests
         if (globalThis.setTimeout !== originalSetTimeout) {
             globalThis.setTimeout = originalSetTimeout;

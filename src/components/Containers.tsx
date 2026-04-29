@@ -6,7 +6,7 @@ import { Container } from "@/components/Container";
 import { IsNewArchitecture } from "@/constants";
 import { useValue$ } from "@/hooks/useValue$";
 import { useArr$, useStateContext } from "@/state/state";
-import { type GetRenderedItem, LegendListPropsBase, type StickyHeaderConfig, typedMemo } from "@/types";
+import { type GetRenderedItem, type StickyHeaderConfig, typedMemo } from "@/types";
 
 interface ContainersProps<ItemT> {
     horizontal: boolean;

@@ -2,8 +2,8 @@ import { beforeEach, describe, expect, it, spyOn } from "bun:test";
 import "../setup"; // Import global test setup
 
 import { ScrollAdjustHandler } from "@/core/ScrollAdjustHandler";
-import { onScroll } from "../../src/core/onScroll";
 import * as calculateItemsInViewModule from "../../src/core/calculateItemsInView";
+import { onScroll } from "../../src/core/onScroll";
 import type { StateContext } from "../../src/state/state";
 import type { InternalState } from "../../src/types";
 import * as checkAtBottomModule from "../../src/utils/checkAtBottom";

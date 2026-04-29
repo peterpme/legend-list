@@ -1,7 +1,15 @@
 import type { ForwardedRef } from "react";
 import * as React from "react";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef } from "react";
-import { type Animated, Dimensions, type LayoutRectangle, Platform, type ScrollView } from "react-native";
+import {
+    type Animated,
+    Dimensions,
+    type LayoutRectangle,
+    type NativeScrollEvent,
+    type NativeSyntheticEvent,
+    Platform,
+    type ScrollView,
+} from "react-native";
 
 import { Containers } from "@/components/Containers";
 import { IsNewArchitecture } from "@/constants";
@@ -9,6 +17,7 @@ import { calculateItemsInView } from "@/core/calculateItemsInView";
 import { checkResetContainers } from "@/core/checkResetContainers";
 import { doInitialAllocateContainers } from "@/core/doInitialAllocateContainers";
 import { handleLayout } from "@/core/handleLayout";
+import { onScroll as handleScroll } from "@/core/onScroll";
 import { ScrollAdjustHandler } from "@/core/ScrollAdjustHandler";
 import { scrollToIndex } from "@/core/scrollToIndex";
 import { updateItemPositions } from "@/core/updateItemPositions";
@@ -32,10 +41,12 @@ const DEFAULT_ITEM_SIZE = 100;
 export interface DatasetLayerHandle {
     /** Route a scroll offset to this dataset (only called for active dataset) */
     onScrollOffset: (offset: number) => void;
+    /** Route a native scroll event to this dataset (only called for active dataset) */
+    onScroll: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
     /** Propagate viewport layout from the parent ScrollView */
     setViewportLayout: (layout: LayoutRectangle) => void;
     /** Propagate the shared header size to this dataset's ctx */
-    setHeaderSize: (size: number) => void;
+    setHeaderSize: (size: number, active?: boolean, fromLayoutEffect?: boolean) => void;
     /** Propagate the shared footer size to this dataset's ctx */
     setFooterSize: (size: number) => void;
     /** Called when this dataset switches from inactive → active */
@@ -64,6 +75,7 @@ export type DatasetLayerProps<T> = Omit<
     data: ReadonlyArray<T>;
     dataVersion?: DatasetEntry<T>["dataVersion"];
     datasetKey?: string;
+    estimatedItemSize?: number;
     refScroller: React.RefObject<ScrollView>;
     stylePaddingBottom: number;
     stylePaddingTop: number;
@@ -103,6 +115,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         onEndReachedThreshold = 0.5,
         onItemSizeChanged,
         onLoad,
+        onScroll: onScrollProp,
         onStartReached,
         onStartReachedThreshold = 0.5,
         onStickyHeaderChange,
@@ -143,6 +156,31 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     const estimatedItemSize = estimatedItemSizeProp ?? DEFAULT_ITEM_SIZE;
     const scrollBuffer = (drawDistance ?? DEFAULT_DRAW_DISTANCE) || 1;
     const keyExtractor = keyExtractorProp ?? ((_item: any, index: number) => index.toString());
+    const resolvedDatasetKey = datasetKey ?? "";
+    const keyExtractorWithDataset = useMemo(
+        () => (item: T, index: number) => keyExtractor(item, index, resolvedDatasetKey),
+        [keyExtractor, resolvedDatasetKey],
+    );
+    const getEstimatedItemSizeWithDataset = useMemo(
+        () =>
+            getEstimatedItemSize
+                ? (index: number, item: T, type: string | undefined) =>
+                      getEstimatedItemSize(index, item, type, resolvedDatasetKey)
+                : undefined,
+        [getEstimatedItemSize, resolvedDatasetKey],
+    );
+    const getFixedItemSizeWithDataset = useMemo(
+        () =>
+            getFixedItemSize
+                ? (index: number, item: T, type: string | undefined) =>
+                      getFixedItemSize(index, item, type, resolvedDatasetKey)
+                : undefined,
+        [getFixedItemSize, resolvedDatasetKey],
+    );
+    const getItemTypeWithDataset = useMemo(
+        () => (getItemType ? (item: T, index: number) => getItemType(item, index, resolvedDatasetKey) : undefined),
+        [getItemType, resolvedDatasetKey],
+    );
 
     const refState = useRef<InternalState>();
 
@@ -155,7 +193,6 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
 
             ctx.internalState = {
                 activeStickyIndex: undefined,
-                activationScrollPending: undefined,
                 averageSizes: {},
                 columns: new Map(),
                 containerItemKeys: new Set(),
@@ -228,18 +265,18 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     state.props = {
         alignItemsAtEnd,
         data: dataProp,
-        dataVersion,
         datasetKey,
+        dataVersion,
         enableAverages,
         estimatedItemSize,
-        getEstimatedItemSize: useWrapIfItem(getEstimatedItemSize),
-        getFixedItemSize: useWrapIfItem(getFixedItemSize),
-        getItemType: useWrapIfItem(getItemType),
+        getEstimatedItemSize: useWrapIfItem(getEstimatedItemSizeWithDataset),
+        getFixedItemSize: useWrapIfItem(getFixedItemSizeWithDataset),
+        getItemType: useWrapIfItem(getItemTypeWithDataset),
         horizontal: !!horizontal,
         initialContainerPoolRatio,
         initialScroll,
         itemsAreEqual,
-        keyExtractor: useWrapIfItem(keyExtractor),
+        keyExtractor: useWrapIfItem(keyExtractorWithDataset),
         maintainScrollAtEnd,
         maintainScrollAtEndThreshold,
         maintainVisibleContentPosition,
@@ -248,7 +285,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
         onEndReachedThreshold,
         onItemSizeChanged,
         onLoad,
-        onScroll: undefined,
+        onScroll: onScrollProp,
         onStartReached,
         onStartReachedThreshold,
         onStickyHeaderChange,
@@ -353,17 +390,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                         viewOffset: initialScroll.viewOffset,
                     });
                 } else {
-                    const targetScroll = state.scroll;
-                    if (Math.abs(targetScroll - scrollOffset) > 0.5) {
-                        state.activationScrollPending = targetScroll;
-                        state.refScroller.current?.scrollTo({
-                            animated: false,
-                            x: state.props.horizontal ? targetScroll : 0,
-                            y: state.props.horizontal ? 0 : targetScroll,
-                        });
-                    } else {
-                        state.scroll = targetScroll;
-                    }
+                    state.scroll = scrollOffset;
                 }
                 if (state.needsActivationRecalc || state.dataChangeNeedsScrollUpdate) {
                     calculateItemsInView(ctx, state, {
@@ -380,16 +407,10 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
             getState() {
                 return state;
             },
+            onScroll(event: NativeSyntheticEvent<NativeScrollEvent>) {
+                handleScroll(ctx, state, event);
+            },
             onScrollOffset(offset: number) {
-                if (
-                    state.activationScrollPending !== undefined &&
-                    Math.abs(offset - state.activationScrollPending) <= 0.5
-                ) {
-                    state.scroll = offset;
-                    state.activationScrollPending = undefined;
-                    state.lastBatchingAction = Date.now();
-                    return;
-                }
                 state.scroll = offset;
                 state.lastBatchingAction = Date.now();
                 state.dataChangeNeedsScrollUpdate = false;
@@ -403,11 +424,23 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
                 }
                 set$(ctx, "footerSize", size);
             },
-            setHeaderSize(size: number) {
+            setHeaderSize(size: number, active?: boolean, fromLayoutEffect?: boolean) {
                 if (peek$(ctx, "headerSize") !== size) {
                     state.needsActivationRecalc = true;
                 }
                 set$(ctx, "headerSize", size);
+
+                if (active && initialScroll?.index !== undefined && hasAppliedInitialScrollRef.current) {
+                    if (IsNewArchitecture && Platform.OS !== "android") {
+                        if (fromLayoutEffect) {
+                            scrollToIndex(ctx, state, { ...initialScroll, animated: false });
+                        }
+                    } else {
+                        setTimeout(() => {
+                            scrollToIndex(ctx, state, { ...initialScroll, animated: false });
+                        }, 17);
+                    }
+                }
             },
             setViewportLayout(layout: LayoutRectangle) {
                 handleLayout(ctx, state, layout, () => {});
@@ -444,13 +477,7 @@ const Activity = (React as any).Activity as
     | React.ComponentType<{ mode: "visible" | "hidden"; children: React.ReactNode }>
     | undefined;
 
-function ActivityOrFragment({
-    mode,
-    children,
-}: {
-    mode: "visible" | "hidden";
-    children: React.ReactNode;
-}) {
+function ActivityOrFragment({ mode, children }: { mode: "visible" | "hidden"; children: React.ReactNode }) {
     if (Activity) {
         return <Activity mode={mode}>{children}</Activity>;
     }

@@ -1,7 +1,7 @@
 import React from "react";
+import renderer from "react-test-renderer";
 
 import { beforeAll, beforeEach, describe, expect, it, mock } from "bun:test";
-import renderer from "react-test-renderer";
 import "../setup";
 
 const calculateItemsInViewMock = mock(() => {});
@@ -45,7 +45,7 @@ describe("DatasetLayer", () => {
         calculateItemsInViewMock.mockClear();
     });
 
-    it("restores saved scroll without recalculating when activation is clean", async () => {
+    it("uses the shared scroll position without recalculating when activation is clean", async () => {
         const { DatasetLayer } = await import("../../src/components/DatasetLayer");
 
         const scrollTo = mock(() => {});
@@ -82,11 +82,8 @@ describe("DatasetLayer", () => {
 
         handle.activate(10);
 
-        expect(scrollTo).toHaveBeenCalledWith({
-            animated: false,
-            x: 0,
-            y: 120,
-        });
+        expect(state.scroll).toBe(10);
+        expect(scrollTo).not.toHaveBeenCalled();
         expect(calculateItemsInViewMock).not.toHaveBeenCalled();
     });
 });

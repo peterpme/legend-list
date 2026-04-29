@@ -9,6 +9,7 @@ import {
     Platform,
     RefreshControl,
     type ScrollView,
+    type ScrollViewProps,
     StyleSheet,
     View,
 } from "react-native";
@@ -28,6 +29,7 @@ import { createColumnWrapperStyle } from "@/utils/createColumnWrapperStyle";
 import { getComponent } from "@/utils/getComponent";
 import { getId } from "@/utils/getId";
 import { extractPadding, warnDevOnce } from "@/utils/helpers";
+import { useThrottledOnScroll } from "@/utils/throttledOnScroll";
 
 // Style applied to wrapper of each inactive dataset layer so it doesn't affect
 // scroll content size while keeping native layout warm for instant reactivation.
@@ -41,6 +43,8 @@ const INACTIVE_LAYER_STYLE = StyleSheet.create({
         top: 0,
     },
 }).wrapper;
+
+const noopOnScroll = () => {};
 
 function useLayerValue(
     ctx: StateContext | undefined,
@@ -99,7 +103,6 @@ export const LegendListDatasets = typedMemo(
             contentContainerStyle: contentContainerStyleProp,
             drawDistance,
             enableAverages,
-            estimatedItemSize,
             estimatedListSize,
             extraData,
             getEstimatedItemSize,
@@ -139,6 +142,7 @@ export const LegendListDatasets = typedMemo(
             refreshControl,
             refreshing,
             refScrollView,
+            renderScrollComponent,
             scrollEventThrottle,
             snapToIndices,
             stickyHeaderConfig,
@@ -160,6 +164,10 @@ export const LegendListDatasets = typedMemo(
 
         const layerRefs = useRef(new Map<string, DatasetLayerHandle | null>());
         const layerRefCallbacks = useRef(new Map<string, (handle: DatasetLayerHandle | null) => void>());
+        const lastViewportLayoutRef = useRef<LayoutRectangle | undefined>(undefined);
+        const lastHeaderSizeRef = useRef<number | undefined>(undefined);
+        const lastFooterSizeRef = useRef<number | undefined>(undefined);
+        const activatedActiveKeyRef = useRef<string | undefined>(undefined);
 
         const activeIndex = datasets.findIndex((d) => d.key === activeDatasetKey);
         const resolvedActiveIndex = activeIndex >= 0 ? activeIndex : 0;
@@ -179,12 +187,23 @@ export const LegendListDatasets = typedMemo(
 
         const prevActiveDatasetKeyRef = useRef(resolvedActiveDatasetKey);
         const [activeCtx, setActiveCtx] = useState<StateContext | undefined>(undefined);
+        const throttledOnScrollProp = useThrottledOnScroll(onScrollProp ?? noopOnScroll, scrollEventThrottle ?? 0);
+        const activeOnScrollProp = scrollEventThrottle && onScrollProp ? throttledOnScrollProp : onScrollProp;
 
         const contentContainerStyle = useMemo(
             () => ({ ...(StyleSheet.flatten(contentContainerStyleProp) || {}) }),
             [contentContainerStyleProp],
         );
         const style = useMemo(() => ({ ...(StyleSheet.flatten(styleProp) || {}) }), [styleProp]);
+        const ScrollComponent = useMemo(
+            () =>
+                renderScrollComponent
+                    ? React.forwardRef((scrollProps: ScrollViewProps, ref) =>
+                          renderScrollComponent({ ...scrollProps, ref } as any),
+                      )
+                    : Animated.ScrollView,
+            [renderScrollComponent],
+        );
         const resolvedColumnWrapperStyle = useMemo(
             () => columnWrapperStyle || createColumnWrapperStyle(contentContainerStyle),
             [columnWrapperStyle, contentContainerStyle],
@@ -194,23 +213,58 @@ export const LegendListDatasets = typedMemo(
 
         const getActiveLayer = useCallback(() => {
             const key = activeKeyRef.current;
-            return key ? layerRefs.current.get(key) ?? undefined : undefined;
+            return key ? (layerRefs.current.get(key) ?? undefined) : undefined;
         }, []);
 
-        const getLayerRef = useCallback((key: string) => {
-            let refCallback = layerRefCallbacks.current.get(key);
-            if (!refCallback) {
-                refCallback = (handle: DatasetLayerHandle | null) => {
-                    if (handle) {
-                        layerRefs.current.set(key, handle);
-                    } else {
-                        layerRefs.current.delete(key);
-                    }
-                };
-                layerRefCallbacks.current.set(key, refCallback);
+        const activateLayer = useCallback((key: string, handle: DatasetLayerHandle | null | undefined) => {
+            if (!handle || activatedActiveKeyRef.current === key) {
+                return;
             }
-            return refCallback;
+
+            handle.activate(currentScrollRef.current);
+            activatedActiveKeyRef.current = key;
+            setActiveCtx(handle.getCtx());
         }, []);
+
+        const applyLayerMeasurements = useCallback((key: string, handle: DatasetLayerHandle) => {
+            const viewportLayout = lastViewportLayoutRef.current;
+            if (viewportLayout) {
+                handle.setViewportLayout(viewportLayout);
+            }
+
+            const isActive = key === activeKeyRef.current;
+            const headerSize = lastHeaderSizeRef.current;
+            if (headerSize !== undefined) {
+                handle.setHeaderSize(headerSize, isActive, false);
+            }
+
+            const footerSize = lastFooterSizeRef.current;
+            if (footerSize !== undefined) {
+                handle.setFooterSize(footerSize);
+            }
+        }, []);
+
+        const getLayerRef = useCallback(
+            (key: string) => {
+                let refCallback = layerRefCallbacks.current.get(key);
+                if (!refCallback) {
+                    refCallback = (handle: DatasetLayerHandle | null) => {
+                        if (handle) {
+                            layerRefs.current.set(key, handle);
+                            applyLayerMeasurements(key, handle);
+                            if (key === activeKeyRef.current && refScroller.current) {
+                                activateLayer(key, handle);
+                            }
+                        } else {
+                            layerRefs.current.delete(key);
+                        }
+                    };
+                    layerRefCallbacks.current.set(key, refCallback);
+                }
+                return refCallback;
+            },
+            [activateLayer, applyLayerMeasurements],
+        );
 
         const getActiveCtx = useCallback(() => getActiveLayer()?.getCtx(), [getActiveLayer]);
 
@@ -220,10 +274,13 @@ export const LegendListDatasets = typedMemo(
         useLayoutEffect(() => {
             const prev = prevActiveDatasetKeyRef.current;
             prevActiveDatasetKeyRef.current = resolvedActiveDatasetKey;
-            if (prev !== resolvedActiveDatasetKey && resolvedActiveDatasetKey) {
-                layerRefs.current.get(resolvedActiveDatasetKey)?.activate(currentScrollRef.current);
+            if (prev !== resolvedActiveDatasetKey) {
+                activatedActiveKeyRef.current = undefined;
             }
-        }, [resolvedActiveDatasetKey]);
+            if (resolvedActiveDatasetKey) {
+                activateLayer(resolvedActiveDatasetKey, layerRefs.current.get(resolvedActiveDatasetKey));
+            }
+        }, [activateLayer, resolvedActiveDatasetKey]);
 
         useEffect(() => {
             setActiveCtx(getActiveCtx());
@@ -235,11 +292,10 @@ export const LegendListDatasets = typedMemo(
                 currentScrollRef.current = offset;
                 const key = activeKeyRef.current;
                 if (key) {
-                    layerRefs.current.get(key)?.onScrollOffset(offset);
+                    layerRefs.current.get(key)?.onScroll(event);
                 }
-                onScrollProp?.(event);
             },
-            [horizontal, onScrollProp],
+            [horizontal],
         );
 
         const onScrollHandler = useMemo(() => {
@@ -256,9 +312,11 @@ export const LegendListDatasets = typedMemo(
         }, [horizontal, onScrollListener, sharedAnimatedScrollY, stickyIndices?.length]);
 
         const onLayoutChange = useCallback((layout: LayoutRectangle) => {
+            const viewportLayout = { height: layout.height, width: layout.width, x: 0, y: 0 };
+            lastViewportLayoutRef.current = viewportLayout;
             // Propagate viewport size to ALL layers so each can allocate containers
             for (const ref of layerRefs.current.values()) {
-                ref?.setViewportLayout({ height: layout.height, width: layout.width, x: 0, y: 0 });
+                ref?.setViewportLayout(viewportLayout);
             }
         }, []);
 
@@ -269,10 +327,11 @@ export const LegendListDatasets = typedMemo(
         });
 
         const onLayoutHeader = useCallback(
-            (rect: LayoutRectangle) => {
+            (rect: LayoutRectangle, fromLayoutEffect: boolean) => {
                 const size = rect[horizontal ? "width" : "height"];
-                for (const ref of layerRefs.current.values()) {
-                    ref?.setHeaderSize(size);
+                lastHeaderSizeRef.current = size;
+                for (const [key, ref] of layerRefs.current) {
+                    ref?.setHeaderSize(size, key === activeKeyRef.current, fromLayoutEffect);
                 }
             },
             [horizontal],
@@ -281,6 +340,7 @@ export const LegendListDatasets = typedMemo(
         const onLayoutFooter = useCallback(
             (rect: LayoutRectangle) => {
                 const size = rect[horizontal ? "width" : "height"];
+                lastFooterSizeRef.current = size;
                 for (const ref of layerRefs.current.values()) {
                     ref?.setFooterSize(size);
                 }
@@ -423,7 +483,10 @@ export const LegendListDatasets = typedMemo(
         const keyExtractorRef = useRef(keyExtractor);
         keyExtractorRef.current = keyExtractor;
         const stableKeyExtractor = keyExtractor
-            ? useCallback((item: any, index: number) => keyExtractorRef.current!(item, index), [])
+            ? useCallback(
+                  (item: any, index: number, datasetKey: string) => keyExtractorRef.current!(item, index, datasetKey),
+                  [],
+              )
             : undefined;
 
         const onEndReachedRef = useRef(onEndReached);
@@ -454,7 +517,6 @@ export const LegendListDatasets = typedMemo(
                 contentContainerStyle,
                 drawDistance,
                 enableAverages,
-                estimatedItemSize,
                 estimatedListSize,
                 extraData,
                 getEstimatedItemSize,
@@ -476,6 +538,7 @@ export const LegendListDatasets = typedMemo(
                 onEndReachedThreshold,
                 onItemSizeChanged,
                 onLoad,
+                onScroll: activeOnScrollProp,
                 onStartReached: stableOnStartReached,
                 onStartReachedThreshold,
                 onStickyHeaderChange,
@@ -497,7 +560,6 @@ export const LegendListDatasets = typedMemo(
                 contentContainerStyle,
                 drawDistance,
                 enableAverages,
-                estimatedItemSize,
                 estimatedListSize,
                 extraData,
                 getEstimatedItemSize,
@@ -517,6 +579,7 @@ export const LegendListDatasets = typedMemo(
                 onEndReachedThreshold,
                 onItemSizeChanged,
                 onLoad,
+                activeOnScrollProp,
                 onStartReachedThreshold,
                 onStickyHeaderChange,
                 recycleItems,
@@ -537,7 +600,7 @@ export const LegendListDatasets = typedMemo(
         const showEmpty = ListEmptyComponent && activeDataset && activeDataset.data.length === 0;
 
         return (
-            <Animated.ScrollView
+            <ScrollComponent
                 {...rest}
                 contentContainerStyle={[contentContainerStyle, horizontal ? { height: "100%" } : {}]}
                 horizontal={horizontal}
@@ -562,7 +625,7 @@ export const LegendListDatasets = typedMemo(
                               />
                           )
                 }
-                scrollEventThrottle={Platform.OS === "web" ? 16 : scrollEventThrottle}
+                scrollEventThrottle={Platform.OS === "web" ? 16 : undefined}
                 snapToOffsets={snapOffsets}
                 style={style}
             >
@@ -574,36 +637,28 @@ export const LegendListDatasets = typedMemo(
                     </LayoutView>
                 )}
                 {showEmpty && getComponent(ListEmptyComponent)}
-                {!showEmpty &&
-                    datasets.map((dataset) => {
-                        const isActive = dataset.key === resolvedActiveDatasetKey;
-                        return (
-                            <View key={dataset.key} style={isActive ? undefined : INACTIVE_LAYER_STYLE}>
-                                <DatasetLayer
-                                    {...sharedLayerProps}
+                {datasets.map((dataset) => {
+                    const isActive = dataset.key === resolvedActiveDatasetKey;
+                    return (
+                        <View key={dataset.key} style={isActive ? undefined : INACTIVE_LAYER_STYLE}>
+                            <DatasetLayer
+                                {...sharedLayerProps}
                                 active={isActive}
                                 data={dataset.data}
-                                dataVersion={dataset.dataVersion}
                                 datasetKey={dataset.key}
-                                estimatedItemSize={dataset.estimatedItemSize ?? sharedLayerProps.estimatedItemSize}
-                                    getEstimatedItemSize={
-                                        dataset.getEstimatedItemSize ?? sharedLayerProps.getEstimatedItemSize
-                                    }
-                                    getFixedItemSize={dataset.getFixedItemSize ?? sharedLayerProps.getFixedItemSize}
-                                    getItemType={dataset.getItemType ?? sharedLayerProps.getItemType}
-                                    keyExtractor={dataset.keyExtractor ?? sharedLayerProps.keyExtractor}
-                                    ref={getLayerRef(dataset.key)}
-                                    refScroller={refScroller}
-                                />
-                            </View>
-                        );
-                    })}
+                                dataVersion={dataset.dataVersion}
+                                ref={getLayerRef(dataset.key)}
+                                refScroller={refScroller}
+                            />
+                        </View>
+                    );
+                })}
                 {ListFooterComponent && (
                     <LayoutView onLayoutChange={onLayoutFooter} style={ListFooterComponentStyle}>
                         {getComponent(ListFooterComponent)}
                     </LayoutView>
                 )}
-            </Animated.ScrollView>
+            </ScrollComponent>
         );
     }),
 );

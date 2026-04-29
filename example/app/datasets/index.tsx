@@ -2,8 +2,8 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, StatusBar, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 
-import { LegendListDatasets } from "@legendapp/list";
 import type { DatasetEntry } from "@legendapp/list";
+import { LegendListDatasets } from "@legendapp/list";
 import { countries, getEmojiFlag, type TCountryCode } from "countries-list";
 
 export const unstable_settings = {
@@ -43,16 +43,16 @@ type Tab = (typeof TABS)[number];
 
 const DATASETS: Record<Tab, Country[]> = {
     AF: ALL_COUNTRIES.filter((c) => c.continent === "AF"),
-    AS: ALL_COUNTRIES.filter((c) => c.continent === "AS"),
     All: ALL_COUNTRIES,
+    AS: ALL_COUNTRIES.filter((c) => c.continent === "AS"),
     EU: ALL_COUNTRIES.filter((c) => c.continent === "EU"),
     NA: ALL_COUNTRIES.filter((c) => c.continent === "NA"),
 };
 
 const TAB_LABELS: Record<Tab, string> = {
     AF: "Africa",
-    AS: "Asia",
     All: "All",
+    AS: "Asia",
     EU: "Europe",
     NA: "N. America",
 };
@@ -65,9 +65,7 @@ const TabBar = ({ activeTab, onTabChange }: { activeTab: Tab; onTabChange: (tab:
                 onPress={() => onTabChange(tab)}
                 style={[styles.tab, activeTab === tab && styles.activeTab]}
             >
-                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>
-                    {TAB_LABELS[tab]}
-                </Text>
+                <Text style={[styles.tabText, activeTab === tab && styles.activeTabText]}>{TAB_LABELS[tab]}</Text>
                 <Text style={[styles.tabCount, activeTab === tab && styles.activeTabCount]}>
                     {DATASETS[tab].length}
                 </Text>
@@ -113,7 +111,7 @@ const App = () => {
                 <LegendListDatasets
                     activeDatasetKey={activeTab}
                     datasets={datasets}
-                    estimatedItemSize={60}
+                    getEstimatedItemSize={() => 60}
                     keyExtractor={keyExtractor}
                     ListHeaderComponent={
                         <View>
@@ -181,9 +179,9 @@ const styles = StyleSheet.create({
     },
     header: {
         backgroundColor: "#fff",
+        paddingBottom: 12,
         paddingHorizontal: 16,
         paddingTop: 16,
-        paddingBottom: 12,
     },
     heading: {
         color: "#333",
