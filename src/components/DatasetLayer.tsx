@@ -71,6 +71,7 @@ export type DatasetLayerProps<T> = Omit<
     | "refScrollView"
     | "style"
 > & {
+    active: boolean;
     animatedScrollY: Animated.Value;
     data: ReadonlyArray<T>;
     dataVersion?: DatasetEntry<T>["dataVersion"];
@@ -86,6 +87,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     ref: ForwardedRef<DatasetLayerHandle>,
 ) {
     const {
+        active,
         alignItemsAtEnd = false,
         animatedScrollY,
         columnWrapperStyle,
@@ -459,15 +461,17 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     );
 
     return (
-        <Containers
-            getRenderedItem={fns.getRenderedItem}
-            horizontal={!!horizontal}
-            ItemSeparatorComponent={ItemSeparatorComponent}
-            recycleItems={!!recycleItems}
-            stickyHeaderConfig={stickyHeaderConfig}
-            updateItemSize={fns.updateItemSize}
-            waitForInitialLayout={waitForInitialLayout}
-        />
+        <ActivityOrFragment mode={active ? "visible" : "hidden"}>
+            <Containers
+                getRenderedItem={fns.getRenderedItem}
+                horizontal={!!horizontal}
+                ItemSeparatorComponent={ItemSeparatorComponent}
+                recycleItems={!!recycleItems}
+                stickyHeaderConfig={stickyHeaderConfig}
+                updateItemSize={fns.updateItemSize}
+                waitForInitialLayout={waitForInitialLayout}
+            />
+        </ActivityOrFragment>
     );
 });
 
@@ -489,15 +493,12 @@ function ActivityOrFragment({ mode, children }: { mode: "visible" | "hidden"; ch
 // haven't changed are skipped entirely.
 export const DatasetLayer = typedMemo(
     typedForwardRef(function DatasetLayer<T>(
-        props: DatasetLayerProps<T> & { active: boolean },
+        props: DatasetLayerProps<T>,
         ref: ForwardedRef<DatasetLayerHandle>,
     ) {
-        const { active, ...rest } = props;
         return (
             <StateProvider>
-                <ActivityOrFragment mode={active ? "visible" : "hidden"}>
-                    <DatasetLayerInner ref={ref} {...(rest as DatasetLayerProps<T>)} />
-                </ActivityOrFragment>
+                <DatasetLayerInner ref={ref} {...props} />
             </StateProvider>
         );
     }),
