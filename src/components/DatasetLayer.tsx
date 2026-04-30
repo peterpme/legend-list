@@ -87,7 +87,7 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     ref: ForwardedRef<DatasetLayerHandle>,
 ) {
     const {
-        active,
+        active: _active,
         alignItemsAtEnd = false,
         animatedScrollY,
         columnWrapperStyle,
@@ -154,6 +154,9 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     }
     ctx.animatedScrollY = animatedScrollY;
     ctx.columnWrapperStyle = columnWrapperStyle;
+    if (datasetKey && !ctx.debugLabel) {
+        ctx.debugLabel = datasetKey;
+    }
 
     const estimatedItemSize = estimatedItemSizeProp ?? DEFAULT_ITEM_SIZE;
     const scrollBuffer = (drawDistance ?? DEFAULT_DRAW_DISTANCE) || 1;
@@ -461,32 +464,17 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     );
 
     return (
-        <ActivityOrFragment mode={active ? "visible" : "hidden"}>
-            <Containers
-                getRenderedItem={fns.getRenderedItem}
-                horizontal={!!horizontal}
-                ItemSeparatorComponent={ItemSeparatorComponent}
-                recycleItems={!!recycleItems}
-                stickyHeaderConfig={stickyHeaderConfig}
-                updateItemSize={fns.updateItemSize}
-                waitForInitialLayout={waitForInitialLayout}
-            />
-        </ActivityOrFragment>
+        <Containers
+            getRenderedItem={fns.getRenderedItem}
+            horizontal={!!horizontal}
+            ItemSeparatorComponent={ItemSeparatorComponent}
+            recycleItems={!!recycleItems}
+            stickyHeaderConfig={stickyHeaderConfig}
+            updateItemSize={fns.updateItemSize}
+            waitForInitialLayout={waitForInitialLayout}
+        />
     );
 });
-
-// React.Activity is stable in React 19 but may not be in @types/react yet.
-// Fall back to a plain passthrough when unavailable (e.g. React 18 / old-arch).
-const Activity = (React as any).Activity as
-    | React.ComponentType<{ mode: "visible" | "hidden"; children: React.ReactNode }>
-    | undefined;
-
-function ActivityOrFragment({ mode, children }: { mode: "visible" | "hidden"; children: React.ReactNode }) {
-    if (Activity) {
-        return <Activity mode={mode}>{children}</Activity>;
-    }
-    return <>{children}</>;
-}
 
 // Memoized so that when LegendListDatasets re-renders (e.g. because the active
 // dataset's data changed), sibling DatasetLayers whose data and active flag
