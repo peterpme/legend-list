@@ -71,7 +71,6 @@ export type DatasetLayerProps<T> = Omit<
     | "refScrollView"
     | "style"
 > & {
-    active: boolean;
     animatedScrollY: Animated.Value;
     data: ReadonlyArray<T>;
     dataVersion?: DatasetEntry<T>["dataVersion"];

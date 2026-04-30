@@ -46,6 +46,10 @@ const INACTIVE_LAYER_STYLE = StyleSheet.create({
 
 const noopOnScroll = () => {};
 
+// Stagger inactive dataset mounts by this many ms so the active dataset gets
+// the first frame's worth of work before siblings start allocating containers.
+const DATASET_STAGGER_MS = 32;
+
 function useLayerValue(
     ctx: StateContext | undefined,
     key: "alignItemsPaddingTop" | "scrollAdjust" | "scrollAdjustUserOffset",
@@ -97,6 +101,7 @@ export const LegendListDatasets = typedMemo(
         const {
             datasets,
             activeDatasetKey,
+            datasetStaggerMs = DATASET_STAGGER_MS,
             renderItem,
             alignItemsAtEnd,
             columnWrapperStyle,
@@ -187,6 +192,50 @@ export const LegendListDatasets = typedMemo(
 
         const prevActiveDatasetKeyRef = useRef(resolvedActiveDatasetKey);
         const [activeCtx, setActiveCtx] = useState<StateContext | undefined>(undefined);
+
+        // Mount the active dataset immediately, then progressively mount the
+        // remaining datasets on a stagger so they don't compete with the active
+        // one for the first frames of work.
+        const [mountedKeys, setMountedKeys] = useState<Set<string>>(() => {
+            const initial = new Set<string>();
+            if (resolvedActiveDatasetKey) initial.add(resolvedActiveDatasetKey);
+            return initial;
+        });
+
+        useEffect(() => {
+            // Always make sure the active key is mounted right away.
+            if (resolvedActiveDatasetKey && !mountedKeys.has(resolvedActiveDatasetKey)) {
+                setMountedKeys((prev) => {
+                    if (prev.has(resolvedActiveDatasetKey)) return prev;
+                    const next = new Set(prev);
+                    next.add(resolvedActiveDatasetKey);
+                    return next;
+                });
+            }
+
+            const pending = datasets.filter((d) => !mountedKeys.has(d.key) && d.key !== resolvedActiveDatasetKey);
+            if (pending.length === 0) return;
+
+            const timeouts: ReturnType<typeof setTimeout>[] = [];
+            pending.forEach((dataset, i) => {
+                const delay = (i + 1) * datasetStaggerMs;
+                timeouts.push(
+                    setTimeout(() => {
+                        setMountedKeys((prev) => {
+                            if (prev.has(dataset.key)) return prev;
+                            const next = new Set(prev);
+                            next.add(dataset.key);
+                            return next;
+                        });
+                    }, delay),
+                );
+            });
+
+            return () => {
+                for (const t of timeouts) clearTimeout(t);
+            };
+        }, [datasets, resolvedActiveDatasetKey, mountedKeys, datasetStaggerMs]);
+
         const throttledOnScrollProp = useThrottledOnScroll(onScrollProp ?? noopOnScroll, scrollEventThrottle ?? 0);
         const activeOnScrollProp = scrollEventThrottle && onScrollProp ? throttledOnScrollProp : onScrollProp;
 
@@ -638,12 +687,12 @@ export const LegendListDatasets = typedMemo(
                 )}
                 {showEmpty && getComponent(ListEmptyComponent)}
                 {datasets.map((dataset) => {
+                    if (!mountedKeys.has(dataset.key)) return null;
                     const isActive = dataset.key === resolvedActiveDatasetKey;
                     return (
                         <View key={dataset.key} style={isActive ? undefined : INACTIVE_LAYER_STYLE}>
                             <DatasetLayer
                                 {...sharedLayerProps}
-                                active={isActive}
                                 data={dataset.data}
                                 datasetKey={dataset.key}
                                 dataVersion={dataset.dataVersion}

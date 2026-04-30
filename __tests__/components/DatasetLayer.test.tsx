@@ -59,7 +59,6 @@ describe("DatasetLayer", () => {
 
         renderer.create(
             <DatasetLayer
-                active={false}
                 animatedScrollY={{} as any}
                 data={[{ id: "item-1" }]}
                 datasetKey="spots"

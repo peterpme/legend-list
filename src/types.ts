@@ -401,6 +401,14 @@ export type LegendListDatasetsProps<ItemT = any> = Omit<
     activeDatasetKey: string;
     datasets: DatasetEntry<ItemT>[];
     /**
+     * Delay in ms between mounting each inactive dataset after the active one.
+     * The active dataset mounts immediately; remaining datasets are mounted on
+     * a staggered schedule so they don't compete with the active dataset's
+     * first-frame work. Set to 0 to mount all datasets immediately.
+     * @default 32
+     */
+    datasetStaggerMs?: number;
+    /**
      * Function to extract a unique key for each item. The third argument is the dataset key.
      */
     keyExtractor?: (item: ItemT, index: number, datasetKey: string) => string;
