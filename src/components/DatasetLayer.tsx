@@ -87,7 +87,6 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     ref: ForwardedRef<DatasetLayerHandle>,
 ) {
     const {
-        active: _active,
         alignItemsAtEnd = false,
         animatedScrollY,
         columnWrapperStyle,
@@ -154,9 +153,6 @@ const DatasetLayerInner = typedForwardRef(function DatasetLayerInner<T>(
     }
     ctx.animatedScrollY = animatedScrollY;
     ctx.columnWrapperStyle = columnWrapperStyle;
-    if (datasetKey && !ctx.debugLabel) {
-        ctx.debugLabel = datasetKey;
-    }
 
     const estimatedItemSize = estimatedItemSizeProp ?? DEFAULT_ITEM_SIZE;
     const scrollBuffer = (drawDistance ?? DEFAULT_DRAW_DISTANCE) || 1;

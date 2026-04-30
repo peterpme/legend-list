@@ -102,7 +102,6 @@ export interface StateContext {
     columnWrapperStyle: ColumnWrapperStyle | undefined;
     viewRefs: Map<number, React.RefObject<View>>;
     animatedScrollY: Animated.Value;
-    debugLabel?: string;
 }
 
 const ContextState = React.createContext<StateContext | null>(null);
@@ -209,12 +208,6 @@ export function set$<T extends ListenerType>(
 ) {
     const { listeners, values } = ctx;
     if (values.get(signalName) !== value) {
-        if ((globalThis as any).__LEGEND_LIST_LOG_SET) {
-            const label = ctx.debugLabel ?? "?";
-            const listenerCount = listeners.get(signalName)?.size ?? 0;
-            // biome-ignore lint/suspicious/noConsole: debug logging
-            console.log(`[set$ ${label}] ${signalName} =`, value, `(listeners=${listenerCount})`);
-        }
         values.set(signalName, value);
         const setListeners = listeners.get(signalName);
         if (setListeners) {
